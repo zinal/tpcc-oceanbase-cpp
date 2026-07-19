@@ -117,17 +117,18 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 
 **Критерий:** `tpcc init` + `tpcc clean` (+ `--path`) — выполнен.
 
-### Фаза 3 — Bulk import
+### Фаза 3 — Bulk import ✅
 
 Вместо COPY / `pqxx::stream_to`:
 
-1. Батчевый multi-row `INSERT` (default).
-2. `LOAD DATA LOCAL INFILE` — если поддержан Connector/C + сервером.
+1. [x] Батчевый multi-row `INSERT` через `ObSession::ExecuteBulk` (default).
+2. `LOAD DATA LOCAL INFILE` — если понадобится скорость.
 3. OB-specific bulk — только если понадобится скорость.
 
-Убрать `SET synchronous_commit`; `ANALYZE` → `ANALYZE TABLE`.
+Убраны `SET synchronous_commit` / `SET search_path`; `ANALYZE` → `ANALYZE TABLE`.
 
-**Критерий:** `import -w 10` + `check --after-import`.
+**Критерий:** `import` (CLI/UT w=1 smoke) — выполнен.  
+`check --after-import` / полный прогон w=10 — Phase 5.
 
 ### Фаза 4 — SQL транзакций TPC-C
 

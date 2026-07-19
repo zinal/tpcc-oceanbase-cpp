@@ -39,7 +39,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-20 cmake git libssl-dev zlib1g-dev
+          sudo apt-get install -y clang-20 cmake git libssl-dev zlib1g-dev mariadb-client
 
       - name: Cache LibOBClient
         id: cache-obclient
@@ -73,11 +73,13 @@ jobs:
       - name: Run unit tests (no DB)
         run: ./build/tpcc_tests
 
-      - name: Run Connector/C + DDL tests
+      - name: Run Connector/C + DDL + bulk tests
         env:
           TPCC_TEST_CONNECTION: "host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc"
           # root can CREATE/DROP DATABASE for --path round-trip tests
           TPCC_TEST_CONNECTION_ADMIN: "host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
+          # Full w=1 import is covered by the CLI smoke step below.
+          TPCC_SKIP_IMPORT_UT: "1"
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           ./build/tpcc_ob_tests
@@ -88,6 +90,19 @@ jobs:
           CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
           ./build/tpcc init --connection="${CONN}" --path=tpcc_cli_smoke
           ./build/tpcc clean --connection="${CONN}" --path=tpcc_cli_smoke
+
+      - name: Smoke init + import + clean (w=1)
+        run: |
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
+          ./build/tpcc init --connection="${CONN}" --path=tpcc_import_smoke
+          ./build/tpcc import --connection="${CONN}" --path=tpcc_import_smoke \
+            -w 1 -t 1 --no-tui
+          mysql -h127.0.0.1 -P3306 -uroot -ptpcc -N -e \
+            "SELECT COUNT(*) FROM tpcc_import_smoke.warehouse" | grep -qx 1
+          mysql -h127.0.0.1 -P3306 -uroot -ptpcc -N -e \
+            "SELECT COUNT(*) FROM tpcc_import_smoke.item" | grep -qx 100000
+          ./build/tpcc clean --connection="${CONN}" --path=tpcc_import_smoke
 
       - name: Smoke simulate-select1 via Connector/C
         run: |

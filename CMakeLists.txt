@@ -259,11 +259,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
         add_executable(tpcc_ob_tests
             src/ut/ob_connection_ut.cpp
             src/ut/ob_ddl_ut.cpp
+            src/ut/ob_import_ut.cpp
             src/db/connection.cpp
             src/db/session.cpp
             src/db/connection_pool.cpp
             src/init.cpp
             src/clean.cpp
+            src/import.cpp
             src/path_checker.cpp
             ${TPCC_TEST_LIB_SOURCES}
         )
@@ -289,7 +291,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
             target_compile_options(tpcc_ob_tests PRIVATE -fcoroutines)
         endif()
         add_test(NAME tpcc_ob_tests COMMAND tpcc_ob_tests)
-        set_tests_properties(tpcc_ob_tests PROPERTIES LABELS "ob" TIMEOUT 120)
+        # Import w=1 loads full TPC-C scale (100k items/stock); allow several minutes.
+        set_tests_properties(tpcc_ob_tests PROPERTIES LABELS "ob" TIMEOUT 900)
         message(STATUS "Test target 'tpcc_ob_tests' enabled")
     endif()
 else()
