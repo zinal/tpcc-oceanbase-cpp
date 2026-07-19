@@ -21,6 +21,9 @@ DEFINE_string(path, "",
     "OceanBase database for benchmark tables (CREATE/USE; overrides connection database)");
 
 DEFINE_int32(warehouses, 1, "Number of warehouses");
+DEFINE_int32(partitions, 0,
+    "HASH partition count for OceanBase multi-node layout "
+    "(0 = auto on OceanBase, -1 = disable, N > 0 = explicit count)");
 DEFINE_int32(warmup, 0, "Warmup duration in minutes (0 = adaptive)");
 DEFINE_bool(skip_warmup, false, "Skip warmup entirely and start measurement immediately");
 DEFINE_int32(duration, 10, "Benchmark run duration in minutes");
@@ -56,6 +59,8 @@ void PrintHelp() {
         "                        (default: host=127.0.0.1;port=2881;user=root@test;password=tpcc;database=tpcc)\n"
         "  -p, --path            Benchmark database name (CREATE/USE; optional override)\n"
         "  -w, --warehouses      Number of warehouses (default: 1)\n"
+        "  --partitions          HASH partitions for OceanBase cluster "
+        "(0=auto, -1=off, N>0=explicit; default: 0)\n"
         "  --warmup              Warmup duration in minutes, 0 = adaptive (default: 0)\n"
         "  --skip-warmup         Skip warmup entirely (default: false)\n"
         "  --duration            Benchmark run duration in minutes (default: 10)\n"
@@ -175,7 +180,10 @@ std::string PreprocessArgs(
 
 void RunInit() {
     NTPCC::CheckDbForInit(FLAGS_connection, FLAGS_path);
-    NTPCC::InitSync(FLAGS_connection, FLAGS_path);
+    NTPCC::TInitOptions options;
+    options.PartitionCount = FLAGS_partitions;
+    options.WarehouseCount = FLAGS_warehouses;
+    NTPCC::InitSync(FLAGS_connection, FLAGS_path, options);
 }
 
 void RunImport() {

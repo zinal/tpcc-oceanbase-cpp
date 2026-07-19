@@ -87,6 +87,10 @@ constexpr const char* INDEX_ORDER = "idx_order";
 
 constexpr size_t INDEX_COUNT = 2;
 
+// OceanBase multi-node layout (TABLEGROUP + HASH partitioning).
+constexpr const char* TABLEGROUP_TPCC = "tpcc_tg";
+constexpr int MIN_AUTO_PARTITION_COUNT = 16;
+
 enum class ETransactionType {
     NewOrder = 0,
     Delivery = 1,
