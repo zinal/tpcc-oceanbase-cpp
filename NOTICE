@@ -1,0 +1,16 @@
+TPC-C Benchmark for OceanBase (C++)
+====================================
+
+This repository is a port of:
+
+  https://github.com/ydb-platform/tpcc-postgres-cpp
+
+which itself was ported from the YDB CLI TPC-C workload:
+
+  https://ydb.tech/docs/en/reference/ydb-cli/workload-tpcc
+
+Upstream code is licensed under the Apache License, Version 2.0.
+See the LICENSE file.
+
+TPC-C is a trademark of the Transaction Processing Performance Council.
+This project is not affiliated with or endorsed by the TPC.

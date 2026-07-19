@@ -1,0 +1,24 @@
+services:
+  oceanbase:
+    image: oceanbase/oceanbase-ce:4.3.5-lts
+    container_name: tpcc-oceanbase
+    ports:
+      - "2881:2881"
+    environment:
+      MODE: slim
+      OB_TENANT_PASSWORD: "tpcc"
+      OB_SYS_PASSWORD: "tpcc"
+      OB_DATABASE: tpcc_test
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
+    # OceanBase CE first boot can take several minutes.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'obclient -h127.0.0.1 -P2881 -uroot@test -ptpcc -e "SELECT 1;" || mysql -h127.0.0.1 -P2881 -uroot@test -ptpcc -e "SELECT 1;"',
+        ]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 120s

@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-20 cmake
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build and run unit tests
+        run: |
+          cmake --build build --target tpcc_tests -j"$(nproc)"
+          ./build/tpcc_tests
+
+  # OceanBase end-to-end smoke is enabled after Phase 1 (ObSession) lands.
+  # See docs/PORTING_PLAN.md — OB CE boot is slow; prefer docker compose locally first.
+  # smoke-test:
+  #   name: Smoke Test (OceanBase)
+  #   runs-on: ubuntu-24.04
+  #   ...
