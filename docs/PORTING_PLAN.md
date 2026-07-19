@@ -34,12 +34,14 @@
 
 | Компонент | Статус |
 |-----------|--------|
-| Baseline исходников upstream (включая временно `pg_*`) | Импортирован как материал для порта |
-| План и инвентаризация SQL (`docs/`) | Этот документ + `SQL_DIALECT_GAPS.md` |
-| Каркас `src/db/` | Headers API |
-| docker-compose / CI / README под OceanBase | Подготовлены |
-| Реализация на Connector/C + удаление `pg_*` | **Phase 1 done** |
-| DDL / import / check | Phase 2–5 |
+| Baseline исходников upstream | Импортирован; PG-слой удалён |
+| План и инвентаризация SQL (`docs/`) | Этот документ + `SQL_DIALECT_GAPS.md` + checklist |
+| Адаптер `src/db/` (Connector/C) | **Phase 1 done** — `ObSession` / pool / `libobclnt` |
+| DDL / clean / `--path` | **Phase 2 done** |
+| Bulk import (`ExecuteBulk`) | **Phase 3 done** |
+| TPC-C транзакции + retry | **Phase 4 done** |
+| Consistency checks | **Phase 5 done** |
+| docker-compose / CI / README / smoke | **Phase 6 done** |
 
 ## Архитектура (целевая)
 
