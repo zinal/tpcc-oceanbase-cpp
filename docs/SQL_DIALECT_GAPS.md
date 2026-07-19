@@ -55,13 +55,14 @@
 | retry on `pqxx::transaction_rollback` | `DbError` / `Retryable()` for `1213`, `1205` |
 | `pg_transaction_ut` | `ob_transaction_ut` against imported w=1 schema |
 
-## Checks (`check.cpp`)
+## Checks (`check.cpp`) — Phase 5
 
 | PG | OB |
 |----|----|
-| `BOOL_AND(expr)` | `MIN(expr)` / `BIT_AND` pattern |
-| `BOOL_OR(expr)` | `MAX(expr)` |
-| `FULL JOIN` | emulate with LEFT/RIGHT UNION |
+| `BOOL_AND(expr)` | `MIN(CASE WHEN expr THEN 1 ELSE 0 END)` |
+| `BOOL_OR(expr)` | `MAX(CASE WHEN expr THEN 1 ELSE 0 END)` |
+| `FULL JOIN` | `LEFT JOIN` + `UNION ALL` right-only rows |
+| `SET search_path` | `--path` / `EffectiveDatabase` + `USE` |
 
 Portable enough as-is: `LIMIT`, `COALESCE`, `ABS`, `COUNT(DISTINCT)`, `UNION ALL`, `LEFT JOIN`, `CURRENT_TIMESTAMP`.
 

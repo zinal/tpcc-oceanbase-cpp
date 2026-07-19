@@ -140,14 +140,14 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 
 **Критерий:** `tpcc_ob_tests` зелёные; короткий `run --no-delays` — выполнен.
 
-### Фаза 5 — Consistency checks
+### Фаза 5 — Consistency checks ✅
 
 | PostgreSQL | Замена |
 |------------|--------|
-| `BOOL_AND` / `BOOL_OR` | `MIN` / `MAX` / `SUM` |
-| `FULL JOIN` | emulate LEFT/RIGHT UNION |
+| `BOOL_AND` / `BOOL_OR` | `MIN` / `MAX` over 0/1 predicates |
+| `FULL JOIN` | `LEFT JOIN` + `UNION ALL` anti-join |
 
-**Критерий:** `check` после import и после run.
+**Критерий:** `check --after-import` после import и `check` после run — выполнен.
 
 ### Фаза 6 — Интеграция, CI, polish
 

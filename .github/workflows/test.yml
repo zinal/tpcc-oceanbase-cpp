@@ -78,8 +78,9 @@ jobs:
           TPCC_TEST_CONNECTION: "host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc"
           # root can CREATE/DROP DATABASE for --path round-trip tests
           TPCC_TEST_CONNECTION_ADMIN: "host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
-          # Full w=1 import is covered by the CLI smoke step below.
+          # Full w=1 import / check are covered by the CLI smoke step below.
           TPCC_SKIP_IMPORT_UT: "1"
+          TPCC_SKIP_CHECK_UT: "1"
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           ./build/tpcc_ob_tests
@@ -91,7 +92,7 @@ jobs:
           ./build/tpcc init --connection="${CONN}" --path=tpcc_cli_smoke
           ./build/tpcc clean --connection="${CONN}" --path=tpcc_cli_smoke
 
-      - name: Smoke init + import + real run + clean (w=1)
+      - name: Smoke init + import + check + run + check + clean (w=1)
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
@@ -100,6 +101,11 @@ jobs:
             -w 1 -t 1 --no-tui
           mysql -h127.0.0.1 -P3306 -uroot -ptpcc -N -e \
             "SELECT COUNT(*) FROM tpcc_run_smoke.warehouse" | grep -qx 1
+          ./build/tpcc check \
+            --connection="${CONN}" \
+            --path=tpcc_run_smoke \
+            --warehouses=1 \
+            --after-import
           ./build/tpcc run \
             --connection="${CONN}" \
             --path=tpcc_run_smoke \
@@ -109,6 +115,10 @@ jobs:
             --skip-warmup \
             --no-delays \
             -t 2
+          ./build/tpcc check \
+            --connection="${CONN}" \
+            --path=tpcc_run_smoke \
+            --warehouses=1
           ./build/tpcc clean --connection="${CONN}" --path=tpcc_run_smoke
 
       - name: Smoke simulate-select1 via Connector/C
