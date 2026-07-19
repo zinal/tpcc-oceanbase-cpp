@@ -30,11 +30,12 @@
 
 ## Bulk load (`import.cpp`)
 
-| PG | OB options |
-|----|------------|
-| `pqxx::stream_to` (COPY) | batched multi-row INSERT; `LOAD DATA LOCAL INFILE`; OB bulk API |
-| `SET synchronous_commit = off` | убрать или OB-эквивалент |
-| `ANALYZE warehouse` | `ANALYZE TABLE warehouse` |
+| PG | OB (Phase 3) |
+|----|--------------|
+| `pqxx::stream_to` (COPY) | `ObSession::ExecuteBulk` — batched multi-row `INSERT` |
+| `SET synchronous_commit = off` | removed (no PG session knob) |
+| `SET search_path` | `USE` / `--path` database via `EffectiveDatabase` |
+| `ANALYZE warehouse` | `ANALYZE TABLE \`warehouse\`` |
 
 ## DML features
 

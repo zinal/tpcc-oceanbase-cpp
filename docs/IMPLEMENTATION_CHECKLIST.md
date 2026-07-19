@@ -33,10 +33,11 @@
 
 ## Phase 3 — Import
 
-- [ ] `ExecuteBulk` wired into real import (API exists)
-- [ ] Remove PG-only session knobs
-- [ ] `ANALYZE TABLE`
-- [ ] `import` + `check --after-import` for w=10
+- [x] `ExecuteBulk` wired into real import (batched multi-row INSERT)
+- [x] Remove PG-only session knobs (`synchronous_commit` / `search_path`)
+- [x] `ANALYZE TABLE`
+- [x] `import -w 1` smoke + `ob_import_ut` / ExecuteBulk UT
+- [ ] `check --after-import` for w=10 (Phase 5)
 
 ## Phase 4 — Transactions
 
