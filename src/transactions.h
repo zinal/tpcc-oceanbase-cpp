@@ -1,6 +1,7 @@
 #pragma once
 
-#include "pg_session.h"
+#include "db/session.h"
+#include "db/params.h"
 #include "task_queue.h"
 #include "future.h"
 
@@ -51,31 +52,31 @@ struct TUserAbortedException : public std::runtime_error {
 TFuture<bool> GetNewOrderTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session);
+    ObSession& session);
 
 TFuture<bool> GetDeliveryTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session);
+    ObSession& session);
 
 TFuture<bool> GetOrderStatusTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session);
+    ObSession& session);
 
 TFuture<bool> GetPaymentTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session);
+    ObSession& session);
 
 TFuture<bool> GetStockLevelTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session);
+    ObSession& session);
 
 TFuture<bool> GetSimulationTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session);
+    ObSession& session);
 
 } // namespace NTPCC

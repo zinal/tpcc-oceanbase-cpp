@@ -14,8 +14,10 @@
 #include <string>
 #include <vector>
 
-DEFINE_string(connection, "host=localhost dbname=tpcc user=postgres", "PostgreSQL connection string");
-DEFINE_string(path, "", "PostgreSQL schema for benchmark tables (default: empty, uses server search_path)");
+DEFINE_string(connection,
+    "host=127.0.0.1;port=2881;user=root@test;password=tpcc;database=tpcc",
+    "OceanBase connection string (host/port/user/password/database)");
+DEFINE_string(path, "", "OceanBase database name for benchmark tables (USE db; default: from --connection)");
 
 DEFINE_int32(warehouses, 1, "Number of warehouses");
 DEFINE_int32(warmup, 0, "Warmup duration in minutes (0 = adaptive)");
@@ -35,21 +37,21 @@ namespace {
 
 void PrintHelp() {
     std::cout <<
-        "tpcc - TPC-C benchmark for PostgreSQL\n"
+        "tpcc - TPC-C benchmark for OceanBase\n"
         "\n"
         "Usage: tpcc <command> [options]\n"
         "\n"
         "Commands:\n"
-        "  init      Create TPC-C schema (tables, indexes)\n"
-        "  import    Load TPC-C data into the database\n"
+        "  init      Create TPC-C schema (tables, indexes) [Phase 2]\n"
+        "  import    Load TPC-C data into the database [Phase 3]\n"
         "  run       Run the TPC-C benchmark\n"
-        "  clean     Drop all TPC-C tables\n"
-        "  check     Run TPC-C consistency checks\n"
+        "  clean     Drop all TPC-C tables [Phase 2]\n"
+        "  check     Run TPC-C consistency checks [Phase 5]\n"
         "\n"
         "Options:\n"
-        "  --connection          PostgreSQL connection string\n"
-        "                        (default: \"host=localhost dbname=tpcc user=postgres\")\n"
-        "  -p, --path            PostgreSQL schema for benchmark tables (default: empty, uses server search_path)\n"
+        "  --connection          OceanBase DSN\n"
+        "                        (default: host=127.0.0.1;port=2881;user=root@test;password=tpcc;database=tpcc)\n"
+        "  -p, --path            OceanBase database for tables (USE db; optional)\n"
         "  -w, --warehouses      Number of warehouses (default: 1)\n"
         "  --warmup              Warmup duration in minutes, 0 = adaptive (default: 0)\n"
         "  --skip-warmup         Skip warmup entirely (default: false)\n"
@@ -68,11 +70,9 @@ void PrintHelp() {
         "  --simulate-select1    Run N SELECT 1 queries per transaction (default: 0 = disabled)\n"
         "\n"
         "Examples:\n"
-        "  tpcc init --connection=\"host=localhost dbname=tpcc\"\n"
-        "  tpcc import -w 10 -t 8\n"
+        "  tpcc run --simulate-select1=5 --duration=1 --no-tui\n"
         "  tpcc run -w 10 --duration=5 -t 4\n"
-        "  tpcc check -w 10\n"
-        "  tpcc check -w 10 --after-import\n";
+        "  tpcc init / import / check / clean  (Phases 2–5)\n";
 }
 
 spdlog::level::level_enum ParseLogLevel(const std::string& level) {
@@ -241,7 +241,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    gflags::SetUsageMessage("TPC-C benchmark for PostgreSQL");
+    gflags::SetUsageMessage("TPC-C benchmark for OceanBase");
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
     NTPCC::InitLogging();

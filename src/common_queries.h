@@ -1,7 +1,8 @@
 #pragma once
 
 #include "constants.h"
-#include "pg_session.h"
+#include "db/session.h"
+#include "db/params.h"
 #include "query_result.h"
 #include "future.h"
 
@@ -34,13 +35,13 @@ struct TCustomer {
 TCustomer ParseCustomerFromResult(QueryResult& result);
 
 TFuture<QueryResult> GetCustomerById(
-    PgSession& session,
+    ObSession& session,
     int warehouseID,
     int districtID,
     int customerID);
 
 TFuture<QueryResult> GetCustomersByLastName(
-    PgSession& session,
+    ObSession& session,
     int warehouseID,
     int districtID,
     const std::string& lastName);

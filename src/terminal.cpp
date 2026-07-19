@@ -1,3 +1,4 @@
+#include "db/errors.h"
 #include "terminal.h"
 #include "coro_traits.h"
 #include "log.h"
@@ -12,7 +13,7 @@ namespace NTPCC {
 namespace {
 
 struct TTerminalTransaction {
-    using TTaskFunc = TFuture<bool> (*)(TTransactionContext&, std::chrono::microseconds&, PgSession&);
+    using TTaskFunc = TFuture<bool> (*)(TTransactionContext&, std::chrono::microseconds&, ObSession&);
 
     std::string Name;
     double Weight;
@@ -65,7 +66,7 @@ TTerminal::TTerminal(size_t terminalID,
                      size_t warehouseID,
                      size_t warehouseCount,
                      ITaskQueue& taskQueue,
-                     PgConnectionPool* connectionPool,
+                     ObConnectionPool* connectionPool,
                      bool noDelays,
                      std::stop_token stopToken,
                      std::atomic<bool>& stopWarmup,
@@ -131,13 +132,13 @@ TFuture<void> TTerminal::Run() {
         for (int attempt = 0; attempt <= MaxRetries; ++attempt) {
             bool shouldRetry = false;
             try {
-                std::optional<PgConnectionPool::SessionGuard> guard;
+                std::optional<ObConnectionPool::SessionGuard> guard;
                 if (ConnectionPool) {
                     guard.emplace(ConnectionPool->AcquireGuard());
                 }
 
-                PgSession dummySession;
-                PgSession& session = guard ? **guard : dummySession;
+                ObSession dummySession;
+                ObSession& session = guard ? **guard : dummySession;
 
                 latencyPure = std::chrono::microseconds{0};
                 TFuture<bool> future = simulationMode
@@ -159,14 +160,19 @@ TFuture<void> TTerminal::Run() {
             } catch (const TUserAbortedException&) {
                 Stats->IncUserAborted(static_cast<ETransactionType>(txIndex));
                 LOG_T("Terminal {} {} user aborted", Context.TerminalID, txName);
-            } catch (const pqxx::transaction_rollback&) {
-                if (attempt < MaxRetries) {
+            } catch (const DbError& err) {
+                if (err.Retryable() && attempt < MaxRetries) {
                     shouldRetry = true;
-                    LOG_D("Terminal {} {} transaction rollback, retry {}/{}",
-                          Context.TerminalID, txName, attempt + 1, MaxRetries);
-                } else {
+                    LOG_D("Terminal {} {} retryable DB error ({}), retry {}/{}",
+                          Context.TerminalID, txName, err.what(), attempt + 1, MaxRetries);
+                } else if (err.Retryable()) {
                     Stats->IncFailed(static_cast<ETransactionType>(txIndex));
-                    LOG_D("Terminal {} {} transaction rollback, retries exhausted", Context.TerminalID, txName);
+                    LOG_D("Terminal {} {} retryable DB error exhausted: {}",
+                          Context.TerminalID, txName, err.what());
+                } else {
+                    LOG_E("Terminal {} non-retryable DB error in {}: {}",
+                          Context.TerminalID, txName, err.what());
+                    fatal = true;
                 }
             } catch (const std::exception& ex) {
                 if (StopToken.stop_requested()) {

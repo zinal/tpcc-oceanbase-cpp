@@ -1,24 +1,26 @@
 # Implementation checklist
 
 Детали — в `PORTING_PLAN.md`.  
-Скоуп: **только OceanBase** + **только OceanBase Connector/C** (без PostgreSQL backend, без libmysqlclient).
+Скоуп: **только OceanBase** + **только OceanBase Connector/C**.
 
 ## Phase 1 — Adapter (Connector/C)
 
-- [ ] Install LibOBClient (`libobclient` / `libobclnt`) in build env
+- [x] Install LibOBClient (`libobclient` / `libobclnt`) in build env
 - [x] `cmake/FindOBClient.cmake` — OB only, no mysqlclient fallback
-- [ ] `src/db/connection.h/.cpp` (opaque `MYSQL*` wrapper)
-- [ ] `src/db/params.h` (+ bind helpers for prepared statements)
-- [ ] `src/db/query_result.h` (materialized rows from `MYSQL_RES`)
-- [ ] `src/db/errors.h` (retryable classification)
-- [ ] `src/db/session.h/.cpp` (`ObSession`)
-- [ ] `src/db/connection_pool.h/.cpp`
-- [ ] Wire `CMakeLists.txt` to Connector/C; drop pqxx from build
-- [ ] Replace call sites: `PgSession` → `ObSession`, `pqxx::params` → `Params`
-- [ ] Delete `src/pg_session.*`, `src/pg_connection_pool.*`, pqxx `src/query_result.h`
-- [ ] Connection flags / DSN: host/port/user/password/database
-- [ ] CLI/help: OceanBase wording only
-- [ ] `run --simulate-select1` works against OceanBase (link: libobclient)
+- [x] `src/db/connection.h/.cpp` (opaque `MYSQL*` wrapper)
+- [x] `src/db/params.h` (+ `MakeParams`)
+- [x] `src/db/query_result.h` (materialized rows)
+- [x] `src/db/errors.h` (retryable classification)
+- [x] `src/db/session.h/.cpp` (`ObSession`)
+- [x] `src/db/connection_pool.h/.cpp`
+- [x] Wire `CMakeLists.txt` to Connector/C; drop pqxx from build
+- [x] Replace call sites: `PgSession` → `ObSession`, `pqxx::params` → `MakeParams`
+- [x] Delete `src/pg_session.*`, `src/pg_connection_pool.*`, pqxx result impl
+- [x] Connection DSN: host/port/user/password/database
+- [x] CLI/help: OceanBase wording
+- [x] `run --simulate-select1` works (Connector/C linked)
+- [x] `tpcc_ob_tests` adapter tests
+- [x] Stub `init` / `import` / `clean` / `check` until later phases
 
 ## Phase 2 — DDL
 
@@ -29,18 +31,18 @@
 
 ## Phase 3 — Import
 
-- [ ] `ExecuteBulk` batched INSERT (or LOAD DATA via Connector/C)
-- [ ] Remove `synchronous_commit`
+- [ ] `ExecuteBulk` wired into real import (API exists)
+- [ ] Remove PG-only session knobs
 - [ ] `ANALYZE TABLE`
 - [ ] `import` + `check --after-import` for w=10
 
 ## Phase 4 — Transactions
 
-- [ ] All `$n` → `?`
-- [ ] Payment without `RETURNING`
-- [ ] Simulation cast for Connector/C
-- [ ] Retry via `DbError` (not pqxx)
-- [ ] `tpcc_ob_tests` green
+- [x] `$n` → `?` (done with adapter cutover)
+- [x] Payment without `RETURNING` (SELECT FOR UPDATE + UPDATE)
+- [x] Simulation cast for Connector/C
+- [x] Retry via `DbError`
+- [ ] Full `tpcc_ob_tests` transaction suite against loaded schema
 
 ## Phase 5 — Checks
 
@@ -50,8 +52,8 @@
 
 ## Phase 6 — CI / docs
 
-- [ ] `docker-compose.yml` smoke verified
-- [ ] `tests/*.sh` use **`obclient`** only
-- [ ] GitHub Actions: install LibOBClient + OB smoke (or documented manual)
-- [ ] README: LibOBClient install + quick start
-- [ ] No pqxx / libpq / libmysqlclient / PostgreSQL runtime references
+- [ ] `docker-compose.yml` smoke verified on OceanBase CE
+- [ ] `tests/*.sh` end-to-end green
+- [ ] GitHub Actions: install LibOBClient + OB smoke
+- [x] README / `docs/LIBOBCLIENT.md`
+- [x] No pqxx / libpq in runtime binary

@@ -3,7 +3,7 @@
 #include "constants.h"
 #include "log.h"
 #include "log_backend.h"
-#include "pg_connection_pool.h"
+#include "db/connection_pool.h"
 #include "runner_display_data.h"
 #include "task_queue.h"
 #include "terminal.h"
@@ -270,9 +270,9 @@ void RunSync(const TRunConfig& config) {
           warehouseCount, terminalCount, threadCount,
           needsConnections ? poolSize : 0, maxInflight);
 
-    std::unique_ptr<PgConnectionPool> connectionPool;
+    std::unique_ptr<ObConnectionPool> connectionPool;
     if (needsConnections) {
-        connectionPool = std::make_unique<PgConnectionPool>(
+        connectionPool = std::make_unique<ObConnectionPool>(
             config.ConnectionString, poolSize, ioThreads, config.Path);
     }
 

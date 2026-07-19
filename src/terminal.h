@@ -4,7 +4,7 @@
 #include "constants.h"
 #include "histogram.h"
 #include "transactions.h"
-#include "pg_connection_pool.h"
+#include "db/connection_pool.h"
 
 #include "future.h"
 #include "spinlock.h"
@@ -137,7 +137,7 @@ public:
         size_t warehouseID,
         size_t warehouseCount,
         ITaskQueue& taskQueue,
-        PgConnectionPool* connectionPool,
+        ObConnectionPool* connectionPool,
         bool noDelays,
         std::stop_token stopToken,
         std::atomic<bool>& stopWarmup,
@@ -160,7 +160,7 @@ private:
 
 private:
     ITaskQueue& TaskQueue;
-    PgConnectionPool* ConnectionPool;
+    ObConnectionPool* ConnectionPool;
     TTransactionContext Context;
     bool NoDelays;
     std::stop_token StopToken;
