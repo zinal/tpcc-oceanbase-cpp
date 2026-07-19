@@ -69,6 +69,81 @@ host=127.0.0.1;port=2881;user=root@test;password=tpcc;database=tpcc
 
 `--path` selects a dedicated MySQL database (`CREATE`/`USE`/`DROP`) for benchmark tables.
 
+## Initial database setup (OBD cluster)
+
+For production or lab clusters deployed with [OBD](https://www.oceanbase.com/docs/obd),
+prepare a **MySQL-compatible user tenant**, database, and account before running `tpcc`.
+
+### 1. Inspect the cluster
+
+```bash
+obd cluster display ob-yc-prod   # replace with your cluster name
+```
+
+The output lists observer endpoints, the `root@sys` password (`root_password`), and
+ready-to-use `obclient` connect commands. Use it to fill in host, port, and the sys
+password below.
+
+### 2. Connect as the sys administrator
+
+Direct connection to port **2881** (or via ODP on **2883** — see `obd cluster display`):
+
+```bash
+obclient -h<OB_HOST> -P2881 -uroot@sys -p'<SYS_PASSWORD>' -Doceanbase -A
+```
+
+`-D oceanbase` selects the sys catalog; `-A` disables auto-rehash (same as the MySQL
+client).
+
+### 3. Create a user tenant (recommended)
+
+Use the sys tenant only for administration. Create a dedicated MySQL tenant, for
+example `tpcc`:
+
+```bash
+obd cluster tenant create ob-yc-prod -n tpcc
+```
+
+Adjust CPU/memory via OBD options if needed (`obd cluster tenant create --help`).
+
+### 4. Create the benchmark database and user
+
+Connect to the **user tenant** (default admin is `root@<tenant>`):
+
+```bash
+obclient -h<OB_HOST> -P2881 -uroot@tpcc -p -Doceanbase -A
+```
+
+Then run:
+
+```sql
+-- Set the tenant root password (empty by default on a new tenant)
+ALTER USER root IDENTIFIED BY '<PASSWORD>';
+
+-- Dedicated database for TPC-C
+CREATE DATABASE IF NOT EXISTS tpcc DEFAULT CHARACTER SET utf8mb4;
+```
+
+Optionally use a non-root account:
+
+```sql
+CREATE USER IF NOT EXISTS tpcc IDENTIFIED BY '<PASSWORD>';
+GRANT ALL PRIVILEGES ON tpcc.* TO tpcc;
+```
+
+`tpcc init` can also create the database named by `--path` on first run if the account
+has `CREATE` privilege; pre-creating `tpcc` is still recommended for production.
+
+### 5. DSN for `tpcc`
+
+```
+host=<OB_HOST>;port=2881;user=root@tpcc;password=<PASSWORD>;database=tpcc
+```
+
+Use `--path=<name>` to isolate benchmark tables in a separate database (`CREATE`/`USE`/`DROP`);
+the connection `database=` is the login catalog and can match `--path` or stay on a shared
+catalog.
+
 ## Integration tests
 
 | Script | Purpose |
