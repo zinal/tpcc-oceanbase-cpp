@@ -7,7 +7,6 @@
 namespace NTPCC {
 
 // MySQL / OceanBase error classification for transaction retry.
-// Baseline used catch (pqxx::transaction_rollback). Map server codes here.
 enum class DbErrorKind {
     Other,
     Deadlock,          // MySQL 1213 (ER_LOCK_DEADLOCK)

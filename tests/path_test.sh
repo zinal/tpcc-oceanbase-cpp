@@ -1,86 +1,78 @@
 #!/usr/bin/env bash
 #
-# Integration test for the --path option on OceanBase.
-# In the OceanBase port, --path means a MySQL database name (USE db),
-# not a PostgreSQL schema / search_path.
+# Integration test for --path (dedicated MySQL database / USE db).
 #
-# Prerequisites: same as smoke_test.sh (Phase 1+).
+# Plants a sentinel table in the default connection database and verifies it
+# survives init/import/run/clean of the --path database.
+#
+# Requires a MySQL-protocol CLI for the sentinel (obclient preferred; mysql OK
+# for MariaDB CI stand-in).
 
 set -euo pipefail
 
-TPCC_BIN="${TPCC_BIN:-./build/tpcc}"
-TPCC_WAREHOUSES="${TPCC_WAREHOUSES:-1}"
-TPCC_DURATION="${TPCC_DURATION:-1}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-OB_HOST="${OB_HOST:-127.0.0.1}"
-OB_PORT="${OB_PORT:-2881}"
-OB_USER="${OB_USER:-root@test}"
-OB_PASSWORD="${OB_PASSWORD:-tpcc}"
-
-# Default connection database (should stay free of TPC-C tables when --path is used).
 DB_NAME="tpcc_path_default_$$"
-# --path target database for benchmark tables.
 PATH_DB="tpcc_bench_$$"
-
-if ! command -v obclient >/dev/null 2>&1; then
-    echo "ERROR: obclient not found (OceanBase CLI required)" >&2
-    exit 1
-fi
-
-ob_cli() {
-    obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-}
-
-CONNECTION="host=${OB_HOST};port=${OB_PORT};user=${OB_USER};password=${OB_PASSWORD};database=${DB_NAME}"
+CONNECTION="$(make_connection "${DB_NAME}")"
 
 cleanup() {
     echo "--- Cleaning up ---"
     "${TPCC_BIN}" clean --path="${PATH_DB}" --connection="${CONNECTION}" 2>/dev/null || true
-    ob_cli -e "DROP DATABASE IF EXISTS \`${PATH_DB}\`;" 2>/dev/null || true
-    ob_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
+    sql_cli -e "DROP DATABASE IF EXISTS \`${PATH_DB}\`;" 2>/dev/null || true
+    sql_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-echo "=== TPC-C --path Integration Test (OceanBase) ==="
+require_tpcc_bin
+resolve_sql_cli
+
+echo "=== TPC-C --path Integration Test ==="
 echo "Binary:      ${TPCC_BIN}"
 echo "Default DB:  ${DB_NAME}"
 echo "Path DB:     ${PATH_DB}"
 echo "Warehouses:  ${TPCC_WAREHOUSES}"
 echo ""
 
-if [[ ! -x "${TPCC_BIN}" ]]; then
-    echo "ERROR: ${TPCC_BIN} not found or not executable" >&2
-    exit 1
-fi
-
-echo "--- Creating databases ---"
-ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
-ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${PATH_DB}\`;"
+echo "--- Creating default database ---"
+sql_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
 
 # Sentinel in the default database: must survive init/clean of --path DB.
 echo "--- Planting sentinel ${DB_NAME}.customer ---"
-ob_cli "${DB_NAME}" -e "CREATE TABLE customer (sentinel int);"
-ob_cli "${DB_NAME}" -e "INSERT INTO customer VALUES (4242);"
+sql_cli -e "USE \`${DB_NAME}\`; DROP TABLE IF EXISTS customer; CREATE TABLE customer (sentinel int); INSERT INTO customer VALUES (4242);"
 
 echo "--- init --path=${PATH_DB} ---"
 "${TPCC_BIN}" init --path="${PATH_DB}" --connection="${CONNECTION}"
 
 echo "--- import --path=${PATH_DB} ---"
-"${TPCC_BIN}" import --path="${PATH_DB}" --warehouses="${TPCC_WAREHOUSES}" --no_tui --connection="${CONNECTION}"
+"${TPCC_BIN}" import \
+    --path="${PATH_DB}" \
+    --warehouses="${TPCC_WAREHOUSES}" \
+    --no-tui \
+    --connection="${CONNECTION}"
 
-echo "--- check --path=${PATH_DB} --after_import ---"
-"${TPCC_BIN}" check --path="${PATH_DB}" --warehouses="${TPCC_WAREHOUSES}" --after_import --connection="${CONNECTION}"
+echo "--- check --path=${PATH_DB} --after-import ---"
+"${TPCC_BIN}" check \
+    --path="${PATH_DB}" \
+    --warehouses="${TPCC_WAREHOUSES}" \
+    --after-import \
+    --connection="${CONNECTION}"
 
+# shellcheck disable=SC2046
 echo "--- run --path=${PATH_DB} ---"
 "${TPCC_BIN}" run \
     --path="${PATH_DB}" \
     --warehouses="${TPCC_WAREHOUSES}" \
-    --duration="${TPCC_DURATION}" \
-    --no_tui \
+    $(run_duration_args) \
+    --no-tui \
+    --skip-warmup \
+    --no-delays \
     --connection="${CONNECTION}"
 
 echo "--- Verifying sentinel still in default DB ---"
-VAL="$(ob_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
+VAL="$(sql_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
 if [[ "${VAL}" != "4242" ]]; then
     echo "ERROR: sentinel corrupted or missing (got '${VAL}')" >&2
     exit 1
@@ -90,7 +82,7 @@ echo "--- clean --path=${PATH_DB} ---"
 "${TPCC_BIN}" clean --path="${PATH_DB}" --connection="${CONNECTION}"
 
 echo "--- Verifying sentinel after clean ---"
-VAL="$(ob_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
+VAL="$(sql_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
 if [[ "${VAL}" != "4242" ]]; then
     echo "ERROR: sentinel corrupted after clean (got '${VAL}')" >&2
     exit 1

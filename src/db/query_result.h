@@ -1,8 +1,6 @@
 #pragma once
 
-// DB-neutral query result for OceanBase port.
-// Baseline PostgreSQL code uses pqxx::result in src/query_result.h — replace call sites
-// to include this header once ObSession is wired.
+// Materialized query result for OceanBase Connector/C sessions.
 
 #include <cstdint>
 #include <optional>

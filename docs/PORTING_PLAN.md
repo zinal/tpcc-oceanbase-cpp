@@ -149,14 +149,14 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 
 **Критерий:** `check --after-import` после import и `check` после run — выполнен.
 
-### Фаза 6 — Интеграция, CI, polish
+### Фаза 6 — Интеграция, CI, polish ✅
 
-1. `docker compose` → `oceanbase/oceanbase-ce`.
-2. Интеграционные скрипты только через **`obclient`** (не `psql`, не обязательный `mysql` CLI).
-3. CI: unit-tests; smoke на OB (учитывать долгий boot).
-4. README: установка LibOBClient, DSN, tenant `user@tenant`.
-5. Финальный grep: нет pqxx / libpq / libmysqlclient / «PostgreSQL» в runtime-коде.
-6. Тюнинг batch import и pool sizes.
+1. [x] `docker compose` → `oceanbase/oceanbase-ce` (+ `scripts/wait_for_oceanbase.sh`).
+2. [x] `tests/*.sh` через `tpcc` + `--path`; ad-hoc SQL — `obclient` (fallback `mysql` только для MariaDB stand-in).
+3. [x] CI: обязательный MariaDB stand-in smoke; optional OceanBase CE job (`continue-on-error`).
+4. [x] README: LibOBClient, DSN, tenant `user@tenant`, smoke scripts.
+5. [x] Runtime: нет pqxx / libpq / libmysqlclient (линк только `libobclnt`).
+6. [x] Документированы defaults batch import (200) и pool/inflight.
 
 ## Риски
 

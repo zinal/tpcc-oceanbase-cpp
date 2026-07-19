@@ -19,7 +19,7 @@ struct ObConnectionConfig {
 };
 
 // Parse "host=...;port=...;user=...;password=...;database=..."
-// Also accepts space-separated key=value (libpq-like) for smoother migration.
+// Also accepts space-separated key=value.
 ObConnectionConfig ParseConnectionString(const std::string& connection);
 
 // Effective TPC-C database: --path if set, otherwise connection database.

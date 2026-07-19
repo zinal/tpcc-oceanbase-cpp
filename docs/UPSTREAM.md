@@ -8,10 +8,8 @@ Imported from [ydb-platform/tpcc-postgres-cpp](https://github.com/ydb-platform/t
 | Date | 2026-04-19 |
 | Message | Cleanup README |
 
-PostgreSQL-specific files are a **temporary** baseline and will be **deleted** in Phase 1
-(no dual PostgreSQL backend in the final product):
+PostgreSQL-specific runtime files (`pg_session.*`, `pg_connection_pool.*`, pqxx
+result wiring) were removed in Phase 1. This repository targets **OceanBase only**
+with **OceanBase Connector/C** (`libobclnt` / `src/db/`).
 
-- `src/pg_session.*`, `src/pg_connection_pool.*`, `src/query_result.h` (pqxx)
-- SQL still to rewrite in `init.cpp`, `import.cpp`, `check.cpp`, `transaction_*.cpp`, …
-
-Target client: **OceanBase Connector/C only** (`src/db/`, see `PORTING_PLAN.md`).
+See `docs/PORTING_PLAN.md` and `docs/LIBOBCLIENT.md`.

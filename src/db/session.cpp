@@ -190,9 +190,10 @@ TFuture<void> ObSession::ExecuteBulk(
             CheckShutdown();
             EnsureTxn(*conn_, inTxn_);
 
-            constexpr size_t kBatchRows = 200;
+            // Multi-row INSERT batch size (import throughput vs statement length).
+            constexpr size_t kBulkBatchRows = 200;
             std::vector<BulkRow> batch;
-            batch.reserve(kBatchRows);
+            batch.reserve(kBulkBatchRows);
 
             auto flush = [&]() {
                 if (batch.empty()) {
@@ -230,7 +231,7 @@ TFuture<void> ObSession::ExecuteBulk(
 
             writer([&](BulkRow row) {
                 batch.push_back(std::move(row));
-                if (batch.size() >= kBatchRows) {
+                if (batch.size() >= kBulkBatchRows) {
                     flush();
                 }
             });

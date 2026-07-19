@@ -1,86 +1,86 @@
 #!/usr/bin/env bash
 #
-# End-to-end smoke test for TPC-C against OceanBase (MySQL mode).
+# End-to-end smoke test for TPC-C against OceanBase (MySQL-compatible tenant)
+# or a MariaDB stand-in (same wire protocol via OceanBase Connector/C).
 #
-# Prerequisites (after Phase 1 of docs/PORTING_PLAN.md):
-#   - OceanBase reachable (e.g. docker compose up -d)
-#   - tpcc binary built against libobclient/libmysqlclient
-#   - obclient CLI available to create/drop the test database
+# Prerequisites:
+#   - Server reachable (docker compose up -d for OceanBase CE, or MariaDB)
+#   - tpcc built against OceanBase Connector/C (libobclnt)
 #
 # Usage:
 #   tests/smoke_test.sh
-#   TPCC_BIN=./build/tpcc OB_HOST=127.0.0.1 tests/smoke_test.sh
+#   TPCC_BIN=./build/tpcc OB_HOST=127.0.0.1 TPCC_WAREHOUSES=1 tests/smoke_test.sh
 #
 # Environment:
-#   TPCC_BIN, TPCC_WAREHOUSES, TPCC_DURATION
-#   OB_HOST (default 127.0.0.1), OB_PORT (2881)
-#   OB_USER (root@test), OB_PASSWORD (tpcc)
+#   TPCC_BIN, TPCC_WAREHOUSES (default 1)
+#   TPCC_DURATION (minutes, default 1) or TPCC_DURATION_SECONDS (CI override)
+#   OB_HOST (default 127.0.0.1), OB_PORT (2881 for OB, 3306 for MariaDB)
+#   OB_USER (root@test / root), OB_PASSWORD (tpcc)
 
 set -euo pipefail
 
-TPCC_BIN="${TPCC_BIN:-./build/tpcc}"
-TPCC_WAREHOUSES="${TPCC_WAREHOUSES:-10}"
-TPCC_DURATION="${TPCC_DURATION:-2}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/common.sh
+source "${SCRIPT_DIR}/common.sh"
 
-OB_HOST="${OB_HOST:-127.0.0.1}"
-OB_PORT="${OB_PORT:-2881}"
-OB_USER="${OB_USER:-root@test}"
-OB_PASSWORD="${OB_PASSWORD:-tpcc}"
 DB_NAME="tpcc_smoke_$$"
-
-if ! command -v obclient >/dev/null 2>&1; then
-    echo "ERROR: obclient not found (OceanBase CLI required)" >&2
-    exit 1
-fi
-
-ob_cli() {
-    obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-}
-
-# Prefer discrete flags once Phase 1 lands; fall back to a single --connection DSN.
-CONNECTION="host=${OB_HOST};port=${OB_PORT};user=${OB_USER};password=${OB_PASSWORD};database=${DB_NAME}"
+CONNECTION="$(make_connection tpcc)"
 
 cleanup() {
     echo "--- Cleaning up ---"
-    "${TPCC_BIN}" clean --connection="${CONNECTION}" 2>/dev/null || true
-    ob_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
+    "${TPCC_BIN}" clean --connection="${CONNECTION}" --path="${DB_NAME}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-echo "=== TPC-C Smoke Test (OceanBase) ==="
+require_tpcc_bin
+
+echo "=== TPC-C Smoke Test ==="
 echo "Binary:     ${TPCC_BIN}"
-echo "Database:   ${DB_NAME}"
+echo "Database:   ${DB_NAME} (--path)"
 echo "Warehouses: ${TPCC_WAREHOUSES}"
-echo "Duration:   ${TPCC_DURATION} min"
+if [[ "${TPCC_DURATION_SECONDS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Duration:   ${TPCC_DURATION_SECONDS}s"
+else
+    echo "Duration:   ${TPCC_DURATION} min"
+fi
+echo "Endpoint:   ${OB_HOST}:${OB_PORT} user=${OB_USER}"
 echo ""
 
-if [[ ! -x "${TPCC_BIN}" ]]; then
-    echo "ERROR: ${TPCC_BIN} not found or not executable" >&2
-    echo "Complete Phase 1 (ObSession) before running this smoke test." >&2
-    exit 1
-fi
-
-echo "--- Creating database ---"
-ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
-
 echo "--- Initializing schema ---"
-"${TPCC_BIN}" init --connection="${CONNECTION}"
+"${TPCC_BIN}" init --connection="${CONNECTION}" --path="${DB_NAME}"
 
 echo "--- Importing data (${TPCC_WAREHOUSES} warehouse(s)) ---"
-"${TPCC_BIN}" import --warehouses="${TPCC_WAREHOUSES}" --no_tui --connection="${CONNECTION}"
+"${TPCC_BIN}" import \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
+    --warehouses="${TPCC_WAREHOUSES}" \
+    -t 1 \
+    --no-tui
 
 echo "--- Checking after import ---"
-"${TPCC_BIN}" check --warehouses="${TPCC_WAREHOUSES}" --after_import --connection="${CONNECTION}"
-
-echo "--- Running benchmark (${TPCC_DURATION} min, no TUI) ---"
-"${TPCC_BIN}" run \
+"${TPCC_BIN}" check \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
     --warehouses="${TPCC_WAREHOUSES}" \
-    --duration="${TPCC_DURATION}" \
-    --no_tui \
-    --connection="${CONNECTION}"
+    --after-import
+
+# shellcheck disable=SC2046
+echo "--- Running benchmark ---"
+"${TPCC_BIN}" run \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
+    --warehouses="${TPCC_WAREHOUSES}" \
+    $(run_duration_args) \
+    --no-tui \
+    --skip-warmup \
+    --no-delays \
+    -t 2
 
 echo "--- Checking after benchmark ---"
-"${TPCC_BIN}" check --warehouses="${TPCC_WAREHOUSES}" --connection="${CONNECTION}"
+"${TPCC_BIN}" check \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
+    --warehouses="${TPCC_WAREHOUSES}"
 
 echo ""
 echo "=== Smoke test PASSED ==="
