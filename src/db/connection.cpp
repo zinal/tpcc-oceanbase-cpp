@@ -166,7 +166,28 @@ ObConnectionConfig ParseConnectionString(const std::string& connection) {
     return cfg;
 }
 
-std::unique_ptr<ObConnection> ObConnection::Connect(const ObConnectionConfig& config) {
+std::string EffectiveDatabase(const ObConnectionConfig& config) {
+    if (!config.path.empty()) {
+        return config.path;
+    }
+    return config.database;
+}
+
+std::string QuoteIdent(const std::string& ident) {
+    if (ident.empty()) {
+        throw std::invalid_argument("empty SQL identifier");
+    }
+    for (unsigned char ch : ident) {
+        if (!(std::isalnum(ch) || ch == '_')) {
+            throw std::invalid_argument(
+                "invalid SQL identifier '" + ident + "' (use [A-Za-z0-9_]+)");
+        }
+    }
+    return "`" + ident + "`";
+}
+
+std::unique_ptr<ObConnection> ObConnection::Connect(const ObConnectionConfig& config,
+                                                    bool selectDatabase) {
     auto conn = std::unique_ptr<ObConnection>(new ObConnection());
     conn->impl_ = std::make_unique<Impl>();
     conn->impl_->mysql = mysql_init(nullptr);
@@ -178,21 +199,21 @@ std::unique_ptr<ObConnection> ObConnection::Connect(const ObConnectionConfig& co
     const int sslEnforce = 0;
     mysql_options(conn->impl_->mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce);
 
+    // Prefer --path database when set; otherwise connection database.
+    const std::string selectedDb = selectDatabase ? EffectiveDatabase(config) : std::string{};
+    const char* initialDb = selectedDb.empty() ? nullptr : selectedDb.c_str();
+
     if (!mysql_real_connect(
             conn->impl_->mysql,
             config.host.c_str(),
             config.user.c_str(),
             config.password.c_str(),
-            config.database.empty() ? nullptr : config.database.c_str(),
+            initialDb,
             static_cast<unsigned int>(config.port),
             nullptr,
             CLIENT_MULTI_STATEMENTS | CLIENT_FOUND_ROWS))
     {
         ThrowMysqlError(conn->impl_->mysql, "mysql_real_connect failed");
-    }
-
-    if (!config.path.empty()) {
-        conn->UseDatabase(config.path);
     }
 
     return conn;
@@ -208,6 +229,13 @@ ObConnection::~ObConnection() {
 void ObConnection::UseDatabase(const std::string& database) {
     if (mysql_select_db(impl_->mysql, database.c_str()) != 0) {
         ThrowMysqlError(impl_->mysql, "USE database failed");
+    }
+}
+
+void ObConnection::CreateDatabaseIfNotExists(const std::string& database) {
+    const std::string sql = "CREATE DATABASE IF NOT EXISTS " + QuoteIdent(database);
+    if (mysql_query(impl_->mysql, sql.c_str()) != 0) {
+        ThrowMysqlError(impl_->mysql, "CREATE DATABASE failed");
     }
 }
 

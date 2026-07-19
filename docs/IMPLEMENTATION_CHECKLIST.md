@@ -24,10 +24,12 @@
 
 ## Phase 2 — DDL
 
-- [ ] `init.cpp` OB MySQL-tenant DDL
-- [ ] `clean.cpp` drop order / database
-- [ ] `path_checker.cpp` without `pg_indexes`
-- [ ] `--path` = database name + `USE`
+- [x] `init.cpp` OB MySQL-tenant DDL
+- [x] `clean.cpp` drop order / database
+- [x] `path_checker.cpp` without `pg_indexes`
+- [x] `--path` = database name + `USE`
+- [x] `CreateIndexes` via information_schema
+- [x] `ob_ddl_ut` + CI init/clean smoke
 
 ## Phase 3 — Import
 
