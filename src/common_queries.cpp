@@ -30,7 +30,7 @@ TCustomer ParseCustomerFromResult(QueryResult& result) {
 //-----------------------------------------------------------------------------
 
 TFuture<QueryResult> GetCustomerById(
-    PgSession& session,
+    ObSession& session,
     int warehouseID,
     int districtID,
     int customerID)
@@ -40,15 +40,15 @@ TFuture<QueryResult> GetCustomerById(
         "c_city, c_state, c_zip, c_phone, c_credit, c_credit_lim, "
         "c_discount, c_balance, c_ytd_payment, c_payment_cnt, c_since "
         "FROM customer "
-        "WHERE c_w_id = $1 AND c_d_id = $2 AND c_id = $3";
+        "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?";
 
-    return session.ExecuteQuery(sql, pqxx::params{warehouseID, districtID, customerID});
+    return session.ExecuteQuery(sql, MakeParams(warehouseID, districtID, customerID));
 }
 
 //-----------------------------------------------------------------------------
 
 TFuture<QueryResult> GetCustomersByLastName(
-    PgSession& session,
+    ObSession& session,
     int warehouseID,
     int districtID,
     const std::string& lastName)
@@ -58,10 +58,10 @@ TFuture<QueryResult> GetCustomersByLastName(
         "c_state, c_zip, c_phone, c_credit, c_credit_lim, c_discount, "
         "c_balance, c_ytd_payment, c_payment_cnt, c_since "
         "FROM customer "
-        "WHERE c_w_id = $1 AND c_d_id = $2 AND c_last = $3 "
+        "WHERE c_w_id = ? AND c_d_id = ? AND c_last = ? "
         "ORDER BY c_first";
 
-    return session.ExecuteQuery(sql, pqxx::params{warehouseID, districtID, lastName});
+    return session.ExecuteQuery(sql, MakeParams(warehouseID, districtID, lastName));
 }
 
 //-----------------------------------------------------------------------------

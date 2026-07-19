@@ -15,7 +15,7 @@ namespace NTPCC {
 TFuture<bool> GetOrderStatusTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session)
+    ObSession& session)
 {
     auto startTs = std::chrono::steady_clock::now();
 
@@ -62,9 +62,9 @@ TFuture<bool> GetOrderStatusTask(
     // Get the newest order for this customer (PostgreSQL uses the idx_order index automatically)
     auto orderFuture = session.ExecuteQuery(
         "SELECT o_id, o_carrier_id, o_entry_d FROM oorder "
-        "WHERE o_w_id = $1 AND o_d_id = $2 AND o_c_id = $3 "
+        "WHERE o_w_id = ? AND o_d_id = ? AND o_c_id = ? "
         "ORDER BY o_id DESC LIMIT 1",
-        pqxx::params{warehouseID, districtID, customer.c_id});
+        MakeParams(warehouseID, districtID, customer.c_id));
     auto orderResult = co_await TSuspendWithFuture(std::move(orderFuture), context.TaskQueue, context.TerminalID);
 
     if (!orderResult.TryNextRow()) {
@@ -80,8 +80,8 @@ TFuture<bool> GetOrderStatusTask(
     // Get order lines
     auto olFuture = session.ExecuteQuery(
         "SELECT ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_delivery_d "
-        "FROM order_line WHERE ol_w_id = $1 AND ol_d_id = $2 AND ol_o_id = $3",
-        pqxx::params{warehouseID, districtID, orderID});
+        "FROM order_line WHERE ol_w_id = ? AND ol_d_id = ? AND ol_o_id = ?",
+        MakeParams(warehouseID, districtID, orderID));
     auto olResult = co_await TSuspendWithFuture(std::move(olFuture), context.TaskQueue, context.TerminalID);
 
     LOG_T("Terminal {} committing OrderStatus: C={}, O={}", context.TerminalID, customer.c_id, orderID);

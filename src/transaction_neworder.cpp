@@ -60,7 +60,7 @@ std::string GetDistInfo(int districtID, const Stock& stock) {
 TFuture<bool> GetNewOrderTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session)
+    ObSession& session)
 {
     auto startTs = std::chrono::steady_clock::now();
 
@@ -107,21 +107,21 @@ TFuture<bool> GetNewOrderTask(
     // Get customer discount/credit
     auto custFuture = session.ExecuteQuery(
         "SELECT c_discount, c_last, c_credit FROM customer "
-        "WHERE c_w_id = $1 AND c_d_id = $2 AND c_id = $3",
-        pqxx::params{warehouseID, districtID, customerID});
+        "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
+        MakeParams(warehouseID, districtID, customerID));
     auto custResult = co_await TSuspendWithFuture(std::move(custFuture), context.TaskQueue, context.TerminalID);
 
     // Get warehouse tax
     auto whFuture = session.ExecuteQuery(
-        "SELECT w_tax FROM warehouse WHERE w_id = $1",
-        pqxx::params{warehouseID});
+        "SELECT w_tax FROM warehouse WHERE w_id = ?",
+        MakeParams(warehouseID));
     auto whResult = co_await TSuspendWithFuture(std::move(whFuture), context.TaskQueue, context.TerminalID);
 
     // Get district info with FOR UPDATE
     auto distFuture = session.ExecuteQuery(
         "SELECT d_next_o_id, d_tax FROM district "
-        "WHERE d_w_id = $1 AND d_id = $2 FOR UPDATE",
-        pqxx::params{warehouseID, districtID});
+        "WHERE d_w_id = ? AND d_id = ? FOR UPDATE",
+        MakeParams(warehouseID, districtID));
     auto distResult = co_await TSuspendWithFuture(std::move(distFuture), context.TaskQueue, context.TerminalID);
 
     if (!distResult.TryNextRow()) {
@@ -134,21 +134,21 @@ TFuture<bool> GetNewOrderTask(
     // Update district next order ID
     auto updDistFuture = session.ExecuteModify(
         "UPDATE district SET d_next_o_id = d_next_o_id + 1 "
-        "WHERE d_w_id = $1 AND d_id = $2",
-        pqxx::params{warehouseID, districtID});
+        "WHERE d_w_id = ? AND d_id = ?",
+        MakeParams(warehouseID, districtID));
     co_await TSuspendWithFuture(std::move(updDistFuture), context.TaskQueue, context.TerminalID);
 
     // Insert into oorder
     auto oorderFuture = session.ExecuteModify(
         "INSERT INTO oorder (o_w_id, o_d_id, o_id, o_c_id, o_ol_cnt, o_all_local, o_entry_d) "
-        "VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)",
-        pqxx::params{warehouseID, districtID, nextOrderID, customerID, numItems, allLocal});
+        "VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)",
+        MakeParams(warehouseID, districtID, nextOrderID, customerID, numItems, allLocal));
     co_await TSuspendWithFuture(std::move(oorderFuture), context.TaskQueue, context.TerminalID);
 
     // Insert into new_order
     auto noFuture = session.ExecuteModify(
-        "INSERT INTO new_order (no_w_id, no_d_id, no_o_id) VALUES ($1, $2, $3)",
-        pqxx::params{warehouseID, districtID, nextOrderID});
+        "INSERT INTO new_order (no_w_id, no_d_id, no_o_id) VALUES (?, ?, ?)",
+        MakeParams(warehouseID, districtID, nextOrderID));
     co_await TSuspendWithFuture(std::move(noFuture), context.TaskQueue, context.TerminalID);
 
     // Get items one by one and check for invalid item
@@ -157,8 +157,8 @@ TFuture<bool> GetNewOrderTask(
         if (itemIDs[i] == INVALID_ITEM_ID) continue;
 
         auto itemFuture = session.ExecuteQuery(
-            "SELECT i_price, i_name, i_data FROM item WHERE i_id = $1",
-            pqxx::params{itemIDs[i]});
+            "SELECT i_price, i_name, i_data FROM item WHERE i_id = ?",
+            MakeParams(itemIDs[i]));
         auto itemResult = co_await TSuspendWithFuture(std::move(itemFuture), context.TaskQueue, context.TerminalID);
 
         if (itemResult.TryNextRow()) {
@@ -182,8 +182,8 @@ TFuture<bool> GetNewOrderTask(
             "SELECT s_quantity, s_data, s_ytd, s_order_cnt, s_remote_cnt, "
             "s_dist_01, s_dist_02, s_dist_03, s_dist_04, s_dist_05, "
             "s_dist_06, s_dist_07, s_dist_08, s_dist_09, s_dist_10 "
-            "FROM stock WHERE s_w_id = $1 AND s_i_id = $2 FOR UPDATE",
-            pqxx::params{supplierWarehouseIDs[i], itemIDs[i]});
+            "FROM stock WHERE s_w_id = ? AND s_i_id = ? FOR UPDATE",
+            MakeParams(supplierWarehouseIDs[i], itemIDs[i]));
         auto stockResult = co_await TSuspendWithFuture(std::move(stockFuture), context.TaskQueue, context.TerminalID);
 
         if (stockResult.TryNextRow()) {
@@ -238,11 +238,11 @@ TFuture<bool> GetNewOrderTask(
         }
 
         auto updStockFuture = session.ExecuteModify(
-            "UPDATE stock SET s_quantity = $1, s_ytd = s_ytd + $2, "
-            "s_order_cnt = s_order_cnt + 1, s_remote_cnt = s_remote_cnt + $3 "
-            "WHERE s_w_id = $4 AND s_i_id = $5",
-            pqxx::params{stock.s_quantity, static_cast<double>(qty),
-                         (supWh == warehouseID ? 0 : 1), supWh, iid});
+            "UPDATE stock SET s_quantity = ?, s_ytd = s_ytd + ?, "
+            "s_order_cnt = s_order_cnt + 1, s_remote_cnt = s_remote_cnt + ? "
+            "WHERE s_w_id = ? AND s_i_id = ?",
+            MakeParams(stock.s_quantity, static_cast<double>(qty),
+                         (supWh == warehouseID ? 0 : 1), supWh, iid));
         co_await TSuspendWithFuture(std::move(updStockFuture), context.TaskQueue, context.TerminalID);
 
         std::string distInfo = GetDistInfo(districtID, stock);
@@ -250,9 +250,9 @@ TFuture<bool> GetNewOrderTask(
         auto olFuture = session.ExecuteModify(
             "INSERT INTO order_line (ol_w_id, ol_d_id, ol_o_id, ol_number, ol_i_id, "
             "ol_amount, ol_supply_w_id, ol_quantity, ol_dist_info) "
-            "VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
-            pqxx::params{warehouseID, districtID, nextOrderID, olNum, iid,
-                         olAmount, supWh, static_cast<double>(qty), distInfo});
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            MakeParams(warehouseID, districtID, nextOrderID, olNum, iid,
+                         olAmount, supWh, static_cast<double>(qty), distInfo));
         co_await TSuspendWithFuture(std::move(olFuture), context.TaskQueue, context.TerminalID);
     }
 

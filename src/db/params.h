@@ -66,4 +66,11 @@ private:
     std::vector<Value> values_;
 };
 
+template <typename... Args>
+inline Params MakeParams(Args&&... args) {
+    Params params;
+    (params(std::forward<Args>(args)), ...);
+    return params;
+}
+
 } // namespace NTPCC

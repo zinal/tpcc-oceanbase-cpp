@@ -38,7 +38,8 @@
 | План и инвентаризация SQL (`docs/`) | Этот документ + `SQL_DIALECT_GAPS.md` |
 | Каркас `src/db/` | Headers API |
 | docker-compose / CI / README под OceanBase | Подготовлены |
-| Реализация на Connector/C + удаление `pg_*` | **Phase 1+** |
+| Реализация на Connector/C + удаление `pg_*` | **Phase 1 done** |
+| DDL / import / check | Phase 2–5 |
 
 ## Архитектура (целевая)
 
@@ -93,21 +94,17 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 - [x] Submodules fmt/spdlog/gflags/ftxui/googletest
 - [x] Уточнение скоупа: OB-only, Connector/C only (этот апдейт)
 
-### Фаза 1 — DB-адаптер на OceanBase Connector/C
+### Фаза 1 — DB-адаптер на OceanBase Connector/C ✅
 
-1. Поставить/собрать **LibOBClient** в окружении; CMake `find_package(OBClient REQUIRED)` без mysqlclient fallback.
-2. Реализовать `ObConnection` + `Params` + `QueryResult` поверх Connector/C (`MYSQL`, `MYSQL_RES`, prepared statements / `?`).
-3. Реализовать `ObSession` + `ObConnectionPool`:
-   - connect: host/port/user/password/database;
-   - `--path` → `USE <database>`;
-   - `CancelAll`: отдельное соединение + `KILL QUERY` / закрытие сокета.
-4. Переключить runner/terminal/transactions на `ObSession` / `Params`.
-5. **Удалить** `src/pg_session.*`, `src/pg_connection_pool.*`, pqxx-`src/query_result.h`.
-6. Тесты адаптера на живом OB; CLI/help без упоминаний PostgreSQL.
+1. [x] LibOBClient + `find_package(OBClient REQUIRED)` (без mysqlclient fallback).
+2. [x] `ObConnection` + `Params` + `QueryResult` (литеральная подстановка `?` через escape).
+3. [x] `ObSession` + `ObConnectionPool` (`USE` для `--path`, `KILL QUERY` в `CancelAll`).
+4. [x] runner/terminal/transactions → `ObSession` / `MakeParams`.
+5. [x] Удалены `pg_session.*`, `pg_connection_pool.*`; `query_result.h` → `db/query_result.h`.
+6. [x] `tpcc_ob_tests`; CLI/help под OceanBase.
+7. [x] `init`/`import`/`clean`/`check` — заглушки до фаз 2–5.
 
-**Критерий готовности:** `./build/tpcc run --simulate-select1=5` против OceanBase (линк с `libobclient`).
-
-> init/import/check могут ещё не работать на SQL-диалекте OB до фаз 2–5, но бинарник **не** должен тянуть pqxx/libpq.
+**Критерий:** `./build/tpcc run --simulate-select1=5` (линк `libobclnt`) — выполнен.
 
 ### Фаза 2 — DDL / clean / path
 

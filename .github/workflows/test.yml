@@ -6,10 +6,31 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  OBCLIENT_PREFIX: ${{ github.workspace }}/.deps/oceanbase
+
 jobs:
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-24.04
+    services:
+      # MySQL wire-protocol stand-in so Connector/C adapter tests hit a real server.
+      # Production target remains OceanBase; Phase 1 SELECT/RR surface is compatible.
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MARIADB_ROOT_PASSWORD: tpcc
+          MARIADB_DATABASE: tpcc
+          MARIADB_USER: tpcc
+          MARIADB_PASSWORD: tpcc
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -18,22 +39,55 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-20 cmake
+          sudo apt-get install -y clang-20 cmake git libssl-dev zlib1g-dev
+
+      - name: Cache LibOBClient
+        id: cache-obclient
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OBCLIENT_PREFIX }}
+          key: libobclient-${{ runner.os }}-${{ hashFiles('scripts/install_libobclient.sh') }}-v1
+
+      - name: Build and install OceanBase Connector/C
+        if: steps.cache-obclient.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/install_libobclient.sh
+          ./scripts/install_libobclient.sh "${OBCLIENT_PREFIX}"
 
       - name: Configure
         run: |
+          echo "LD_LIBRARY_PATH=${OBCLIENT_PREFIX}/lib" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           cmake -B build \
             -DCMAKE_CXX_COMPILER=clang++-20 \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTPCC_REQUIRE_OBCLIENT=ON \
+            -DOBClient_INCLUDE_DIR="${OBCLIENT_PREFIX}/include" \
+            -DOBClient_LIBRARY="${OBCLIENT_PREFIX}/lib/libobclnt.so"
 
-      - name: Build and run unit tests
+      - name: Build
         run: |
-          cmake --build build --target tpcc_tests -j"$(nproc)"
-          ./build/tpcc_tests
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          cmake --build build --target tpcc_tests tpcc_ob_tests tpcc -j"$(nproc)"
 
-  # OceanBase end-to-end smoke is enabled after Phase 1 (ObSession) lands.
-  # See docs/PORTING_PLAN.md — OB CE boot is slow; prefer docker compose locally first.
-  # smoke-test:
-  #   name: Smoke Test (OceanBase)
-  #   runs-on: ubuntu-24.04
-  #   ...
+      - name: Run unit tests (no DB)
+        run: ./build/tpcc_tests
+
+      - name: Run Connector/C adapter tests
+        env:
+          TPCC_TEST_CONNECTION: "host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc"
+        run: |
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          ./build/tpcc_ob_tests
+
+      - name: Smoke simulate-select1 via Connector/C
+        run: |
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          ./build/tpcc run \
+            --connection="host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc" \
+            --simulate-select1=5 \
+            --duration=1 \
+            --warehouses=1 \
+            --no-tui \
+            --skip-warmup \
+            --no-delays

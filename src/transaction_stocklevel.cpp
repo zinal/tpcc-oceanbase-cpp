@@ -14,7 +14,7 @@ namespace NTPCC {
 TFuture<bool> GetStockLevelTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session)
+    ObSession& session)
 {
     auto startTs = std::chrono::steady_clock::now();
 
@@ -29,8 +29,8 @@ TFuture<bool> GetStockLevelTask(
 
     // Get next order ID from district
     auto distFuture = session.ExecuteQuery(
-        "SELECT d_next_o_id FROM district WHERE d_w_id = $1 AND d_id = $2",
-        pqxx::params{warehouseID, districtID});
+        "SELECT d_next_o_id FROM district WHERE d_w_id = ? AND d_id = ?",
+        MakeParams(warehouseID, districtID));
     auto distResult = co_await TSuspendWithFuture(std::move(distFuture), context.TaskQueue, context.TerminalID);
 
     if (!distResult.TryNextRow()) {
@@ -45,11 +45,11 @@ TFuture<bool> GetStockLevelTask(
         "SELECT COUNT(DISTINCT s.s_i_id) AS stock_count "
         "FROM order_line AS ol "
         "INNER JOIN stock AS s ON s.s_i_id = ol.ol_i_id "
-        "WHERE ol.ol_w_id = $1 AND ol.ol_d_id = $2 "
-        "AND ol.ol_o_id < $3 AND ol.ol_o_id >= $4 "
-        "AND s.s_w_id = $5 AND s.s_quantity < $6",
-        pqxx::params{warehouseID, districtID, nextOrderID, nextOrderID - 20,
-                     warehouseID, threshold});
+        "WHERE ol.ol_w_id = ? AND ol.ol_d_id = ? "
+        "AND ol.ol_o_id < ? AND ol.ol_o_id >= ? "
+        "AND s.s_w_id = ? AND s.s_quantity < ?",
+        MakeParams(warehouseID, districtID, nextOrderID, nextOrderID - 20,
+                     warehouseID, threshold));
     auto stockResult = co_await TSuspendWithFuture(std::move(stockFuture), context.TaskQueue, context.TerminalID);
 
     LOG_T("Terminal {} committing StockLevel", context.TerminalID);

@@ -4,6 +4,7 @@ build*/
 *.so
 compile_commands.json
 .cache/
+.deps/
 .idea/
 .vscode/
 cmake-build-*/

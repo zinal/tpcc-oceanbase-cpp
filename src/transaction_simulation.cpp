@@ -10,7 +10,7 @@ namespace NTPCC {
 TFuture<bool> GetSimulationTask(
     TTransactionContext& context,
     std::chrono::microseconds& latency,
-    PgSession& session)
+    ObSession& session)
 {
     auto startTs = std::chrono::steady_clock::now();
 
@@ -33,7 +33,7 @@ TFuture<bool> GetSimulationTask(
 
     for (int i = 0; i < context.SimulateTransactionSelect1; ++i) {
         auto result = co_await TSuspendWithFuture(
-            session.ExecuteQuery("SELECT $1::int", pqxx::params{1}),
+            session.ExecuteQuery("SELECT CAST(? AS SIGNED) AS v", MakeParams(1)),
             context.TaskQueue, context.TerminalID);
         LOG_T("Terminal {} select1 iteration {}", context.TerminalID, i);
     }

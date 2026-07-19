@@ -8,14 +8,12 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Require clang
 if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(WARNING "This project is designed for Clang 16+. Current compiler: ${CMAKE_CXX_COMPILER_ID}")
 endif()
 
 # ---------------------------------------------------------------------------
-# Bundled dependencies (git submodules under third_party/)
-# libpqxx removed — runtime client is OceanBase Connector/C (libobclient) only.
+# Bundled dependencies
 # ---------------------------------------------------------------------------
 
 set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
@@ -30,7 +28,6 @@ add_subdirectory(third_party/spdlog)
 set(GFLAGS_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/gflags)
 
-# ftxui (optional TUI)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ftxui/CMakeLists.txt")
     set(FTXUI_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
     set(FTXUI_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -44,13 +41,24 @@ else()
     message(STATUS "ftxui not found: TUI support disabled")
 endif()
 
+# OceanBase Connector/C is required for the tpcc binary, but optional so that
+# pure unit tests (tpcc_tests) can configure/build in CI without LibOBClient.
+option(TPCC_REQUIRE_OBCLIENT "Fail configure if OceanBase Connector/C is missing" OFF)
 find_package(OBClient)
+if(TPCC_REQUIRE_OBCLIENT AND NOT OBClient_FOUND)
+    message(FATAL_ERROR
+        "OceanBase Connector/C (libobclient/libobclnt) is required "
+        "(TPCC_REQUIRE_OBCLIENT=ON). See docs/LIBOBCLIENT.md")
+endif()
+
+find_package(Threads REQUIRED)
+find_package(OpenSSL)
 
 # ---------------------------------------------------------------------------
-# Core / non-DB sources (always useful)
+# Main binary (needs LibOBClient)
 # ---------------------------------------------------------------------------
 
-set(TPCC_CORE_SOURCES
+set(TPCC_SOURCES
     src/constants.h
     src/util.h
     src/util.cpp
@@ -65,29 +73,16 @@ set(TPCC_CORE_SOURCES
     src/task_queue.cpp
     src/timer_queue.h
     src/spsc_circular_queue.h
-    src/log_backend.h
-    src/log_backend.cpp
-)
-
-# Baseline PostgreSQL DB layer (imported from upstream; to be replaced by src/db/)
-set(TPCC_PG_BASELINE_SOURCES
-    src/pg_session.h
-    src/pg_session.cpp
     src/query_result.h
-    src/pg_connection_pool.h
-    src/pg_connection_pool.cpp
-)
-
-# Target OceanBase DB layer (headers ready; .cpp in Phase 1)
-set(TPCC_OB_DB_SOURCES
     src/db/params.h
     src/db/query_result.h
     src/db/errors.h
+    src/db/connection.h
+    src/db/connection.cpp
     src/db/session.h
+    src/db/session.cpp
     src/db/connection_pool.h
-)
-
-set(TPCC_APP_SOURCES
+    src/db/connection_pool.cpp
     src/init.h
     src/init.cpp
     src/import.h
@@ -112,11 +107,13 @@ set(TPCC_APP_SOURCES
     src/runner_display_data.h
     src/path_checker.h
     src/path_checker.cpp
+    src/log_backend.h
+    src/log_backend.cpp
     src/main.cpp
 )
 
 if(TPCC_HAS_TUI)
-    list(APPEND TPCC_APP_SOURCES
+    list(APPEND TPCC_SOURCES
         src/tui_base.h
         src/tui_base.cpp
         src/runner_tui.h
@@ -131,21 +128,8 @@ if(TPCC_HAS_TUI)
     )
 endif()
 
-# ---------------------------------------------------------------------------
-# Main binary — enabled once ObSession implementation exists
-# ---------------------------------------------------------------------------
-
-set(TPCC_OB_SESSION_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/db/session.cpp")
-set(TPCC_OB_POOL_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/db/connection_pool.cpp")
-
-if(EXISTS "${TPCC_OB_SESSION_CPP}" AND EXISTS "${TPCC_OB_POOL_CPP}" AND OBClient_FOUND)
-    add_executable(tpcc
-        ${TPCC_CORE_SOURCES}
-        ${TPCC_OB_DB_SOURCES}
-        ${TPCC_OB_SESSION_CPP}
-        ${TPCC_OB_POOL_CPP}
-        ${TPCC_APP_SOURCES}
-    )
+if(OBClient_FOUND)
+    add_executable(tpcc ${TPCC_SOURCES})
 
     target_include_directories(tpcc PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
@@ -157,7 +141,14 @@ if(EXISTS "${TPCC_OB_SESSION_CPP}" AND EXISTS "${TPCC_OB_POOL_CPP}" AND OBClient
         gflags
         spdlog::spdlog
         fmt::fmt
+        Threads::Threads
+        dl
+        m
     )
+
+    if(OpenSSL_FOUND)
+        target_link_libraries(tpcc PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    endif()
 
     if(TPCC_HAS_TUI)
         target_link_libraries(tpcc PRIVATE
@@ -174,41 +165,39 @@ if(EXISTS "${TPCC_OB_SESSION_CPP}" AND EXISTS "${TPCC_OB_POOL_CPP}" AND OBClient
     endif()
 
     message(STATUS "tpcc: OceanBase Connector/C build enabled")
+
+    # Optional tcmalloc
+    set(TPCC_USE_TCMALLOC "AUTO" CACHE STRING "Link tcmalloc into the tpcc binary: AUTO, ON, or OFF")
+    set_property(CACHE TPCC_USE_TCMALLOC PROPERTY STRINGS AUTO ON OFF)
+
+    if(NOT TPCC_USE_TCMALLOC STREQUAL "OFF")
+        if(TPCC_USE_TCMALLOC STREQUAL "ON")
+            find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal REQUIRED)
+        else()
+            find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal)
+        endif()
+
+        if(TCMALLOC_LIB)
+            target_link_libraries(tpcc PRIVATE ${TCMALLOC_LIB})
+            target_compile_options(tpcc PRIVATE
+                -fno-builtin-malloc
+                -fno-builtin-calloc
+                -fno-builtin-realloc
+                -fno-builtin-free
+            )
+            message(STATUS "tpcc: linking tcmalloc (${TCMALLOC_LIB})")
+        else()
+            message(STATUS "tpcc: tcmalloc not found, using system malloc")
+        endif()
+    endif()
 else()
     message(STATUS
-        "tpcc binary not configured yet — complete Phase 1 in docs/PORTING_PLAN.md "
-        "(implement src/db/*.cpp, install OceanBase Connector/C / libobclient; "
-        "libmysqlclient is not accepted). "
-        "Temporary PostgreSQL baseline under src/pg_*.cpp will be deleted in Phase 1.")
-endif()
-
-# Optional: link tcmalloc when the main binary exists
-set(TPCC_USE_TCMALLOC "AUTO" CACHE STRING "Link tcmalloc into the tpcc binary: AUTO, ON, or OFF")
-set_property(CACHE TPCC_USE_TCMALLOC PROPERTY STRINGS AUTO ON OFF)
-
-if(TARGET tpcc AND NOT TPCC_USE_TCMALLOC STREQUAL "OFF")
-    if(TPCC_USE_TCMALLOC STREQUAL "ON")
-        find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal REQUIRED)
-    else()
-        find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal)
-    endif()
-
-    if(TCMALLOC_LIB)
-        target_link_libraries(tpcc PRIVATE ${TCMALLOC_LIB})
-        target_compile_options(tpcc PRIVATE
-            -fno-builtin-malloc
-            -fno-builtin-calloc
-            -fno-builtin-realloc
-            -fno-builtin-free
-        )
-        message(STATUS "tpcc: linking tcmalloc (${TCMALLOC_LIB})")
-    else()
-        message(STATUS "tpcc: tcmalloc not found, using system malloc")
-    endif()
+        "OceanBase Connector/C not found: skipping tpcc / tpcc_ob_tests. "
+        "Install LibOBClient (docs/LIBOBCLIENT.md) or pass -DTPCC_REQUIRE_OBCLIENT=ON")
 endif()
 
 # ---------------------------------------------------------------------------
-# coroutines_vs_threads microbenchmark (no DB)
+# coroutines_vs_threads
 # ---------------------------------------------------------------------------
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/coroutines_vs_threads/main.cpp")
@@ -220,12 +209,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/coroutines_vs_threads/main.cpp")
         src/log_backend.cpp
         src/util.cpp
     )
-
     target_include_directories(coroutines_vs_threads PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}/src/coroutines_vs_threads
     )
-
     target_compile_definitions(coroutines_vs_threads PRIVATE TPCC_NO_SPDLOG)
     target_link_libraries(coroutines_vs_threads PRIVATE gflags fmt::fmt)
     target_compile_options(coroutines_vs_threads PRIVATE -Wall -Wextra -Wpedantic)
@@ -258,7 +245,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
         src/ut/log_capture_ut.cpp
         ${TPCC_TEST_LIB_SOURCES}
     )
-
     target_include_directories(tpcc_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
     target_compile_definitions(tpcc_tests PRIVATE TPCC_NO_SPDLOG)
     target_link_libraries(tpcc_tests PRIVATE GTest::gtest GTest::gtest_main fmt::fmt)
@@ -266,14 +252,46 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
     if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
         target_compile_options(tpcc_tests PRIVATE -fcoroutines)
     endif()
-
     add_test(NAME tpcc_tests COMMAND tpcc_tests)
     message(STATUS "Test target 'tpcc_tests' enabled")
+
+    if(OBClient_FOUND)
+        add_executable(tpcc_ob_tests
+            src/ut/ob_connection_ut.cpp
+            src/db/connection.cpp
+            src/db/session.cpp
+            src/db/connection_pool.cpp
+            ${TPCC_TEST_LIB_SOURCES}
+        )
+        target_include_directories(tpcc_ob_tests PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${OBClient_INCLUDE_DIRS}
+        )
+        target_link_libraries(tpcc_ob_tests PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${OBClient_LIBRARIES}
+            spdlog::spdlog
+            fmt::fmt
+            Threads::Threads
+            dl
+            m
+        )
+        if(OpenSSL_FOUND)
+            target_link_libraries(tpcc_ob_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        endif()
+        target_compile_options(tpcc_ob_tests PRIVATE -Wall -Wextra -Wpedantic)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(tpcc_ob_tests PRIVATE -fcoroutines)
+        endif()
+        add_test(NAME tpcc_ob_tests COMMAND tpcc_ob_tests)
+        set_tests_properties(tpcc_ob_tests PROPERTIES LABELS "ob" TIMEOUT 120)
+        message(STATUS "Test target 'tpcc_ob_tests' enabled")
+    endif()
 else()
-    message(STATUS "third_party/googletest not found: tests disabled (run git submodule update --init)")
+    message(STATUS "third_party/googletest not found: tests disabled")
 endif()
 
-# Smoke tests are registered once the tpcc binary exists (OceanBase).
 if(TARGET tpcc)
     add_test(
         NAME smoke_test
