@@ -16,7 +16,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          'obclient -h127.0.0.1 -P2881 -uroot@test -ptpcc -e "SELECT 1;" || mysql -h127.0.0.1 -P2881 -uroot@test -ptpcc -e "SELECT 1;"',
+          'obclient -h127.0.0.1 -P2881 -uroot@test -ptpcc -e "SELECT 1;"',
         ]
       interval: 10s
       timeout: 10s

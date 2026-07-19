@@ -8,9 +8,10 @@ Imported from [ydb-platform/tpcc-postgres-cpp](https://github.com/ydb-platform/t
 | Date | 2026-04-19 |
 | Message | Cleanup README |
 
-PostgreSQL-specific files kept as reference during the port:
+PostgreSQL-specific files are a **temporary** baseline and will be **deleted** in Phase 1
+(no dual PostgreSQL backend in the final product):
 
-- `src/pg_session.*`, `src/pg_connection_pool.*`, `src/query_result.h`
-- SQL in `init.cpp`, `import.cpp`, `check.cpp`, `transaction_*.cpp`, `common_queries.cpp`
+- `src/pg_session.*`, `src/pg_connection_pool.*`, `src/query_result.h` (pqxx)
+- SQL still to rewrite in `init.cpp`, `import.cpp`, `check.cpp`, `transaction_*.cpp`, …
 
-Target replacement lives under `src/db/` (see `PORTING_PLAN.md`).
+Target client: **OceanBase Connector/C only** (`src/db/`, see `PORTING_PLAN.md`).
