@@ -94,7 +94,7 @@ const char* const kCreateTables[] = {
     c_first        varchar(16)    NOT NULL,
     c_credit_lim   decimal(12, 2) NOT NULL,
     c_balance      decimal(12, 2) NOT NULL,
-    c_ytd_payment  float          NOT NULL,
+    c_ytd_payment  decimal(12, 2) NOT NULL,
     c_payment_cnt  int            NOT NULL,
     c_delivery_cnt int            NOT NULL,
     c_street_1     varchar(20)    NOT NULL,

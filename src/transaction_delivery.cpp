@@ -43,11 +43,12 @@ TFuture<bool> GetDeliveryTask(
     std::array<std::optional<TOrderData>, DISTRICT_COUNT> orders;
 
     for (int districtID = DISTRICT_LOW_ID; districtID <= DISTRICT_HIGH_ID; ++districtID) {
-        // Get oldest new order
+        // Get oldest new order (FOR UPDATE avoids concurrent delivery double-credit).
         auto noFuture = session.ExecuteQuery(
             "SELECT no_o_id FROM new_order "
             "WHERE no_d_id = ? AND no_w_id = ? "
-            "ORDER BY no_o_id ASC LIMIT 1",
+            "ORDER BY no_o_id ASC LIMIT 1 "
+            "FOR UPDATE",
             MakeParams(districtID, warehouseID));
         auto noResult = co_await TSuspendWithFuture(std::move(noFuture), context.TaskQueue, context.TerminalID);
 

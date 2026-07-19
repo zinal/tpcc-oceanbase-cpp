@@ -38,13 +38,15 @@ TFuture<QueryResult> GetCustomerById(
     ObSession& session,
     int warehouseID,
     int districtID,
-    int customerID);
+    int customerID,
+    bool forUpdate = false);
 
 TFuture<QueryResult> GetCustomersByLastName(
     ObSession& session,
     int warehouseID,
     int districtID,
-    const std::string& lastName);
+    const std::string& lastName,
+    bool forUpdate = false);
 
 std::optional<TCustomer> SelectCustomerFromResultSet(QueryResult& result);
 
