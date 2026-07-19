@@ -41,10 +41,21 @@ else()
     message(STATUS "ftxui not found: TUI support disabled")
 endif()
 
-find_package(OBClient REQUIRED)
+# OceanBase Connector/C is required for the tpcc binary, but optional so that
+# pure unit tests (tpcc_tests) can configure/build in CI without LibOBClient.
+option(TPCC_REQUIRE_OBCLIENT "Fail configure if OceanBase Connector/C is missing" OFF)
+find_package(OBClient)
+if(TPCC_REQUIRE_OBCLIENT AND NOT OBClient_FOUND)
+    message(FATAL_ERROR
+        "OceanBase Connector/C (libobclient/libobclnt) is required "
+        "(TPCC_REQUIRE_OBCLIENT=ON). See docs/LIBOBCLIENT.md")
+endif()
+
+find_package(Threads REQUIRED)
+find_package(OpenSSL)
 
 # ---------------------------------------------------------------------------
-# Sources
+# Main binary (needs LibOBClient)
 # ---------------------------------------------------------------------------
 
 set(TPCC_SOURCES
@@ -117,68 +128,72 @@ if(TPCC_HAS_TUI)
     )
 endif()
 
-add_executable(tpcc ${TPCC_SOURCES})
+if(OBClient_FOUND)
+    add_executable(tpcc ${TPCC_SOURCES})
 
-target_include_directories(tpcc PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${OBClient_INCLUDE_DIRS}
-)
-
-target_link_libraries(tpcc PRIVATE
-    ${OBClient_LIBRARIES}
-    gflags
-    spdlog::spdlog
-    fmt::fmt
-)
-
-# libobclnt may need these transitively
-find_package(Threads REQUIRED)
-find_package(OpenSSL)
-target_link_libraries(tpcc PRIVATE Threads::Threads)
-if(OpenSSL_FOUND)
-    target_link_libraries(tpcc PRIVATE OpenSSL::SSL OpenSSL::Crypto)
-endif()
-target_link_libraries(tpcc PRIVATE dl m)
-
-if(TPCC_HAS_TUI)
-    target_link_libraries(tpcc PRIVATE
-        ftxui::screen
-        ftxui::dom
-        ftxui::component
+    target_include_directories(tpcc PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${OBClient_INCLUDE_DIRS}
     )
-    target_compile_definitions(tpcc PRIVATE TPCC_HAS_TUI=1)
-endif()
 
-target_compile_options(tpcc PRIVATE -Wall -Wextra -Wpedantic)
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(tpcc PRIVATE -fcoroutines)
-endif()
+    target_link_libraries(tpcc PRIVATE
+        ${OBClient_LIBRARIES}
+        gflags
+        spdlog::spdlog
+        fmt::fmt
+        Threads::Threads
+        dl
+        m
+    )
 
-message(STATUS "tpcc: OceanBase Connector/C build enabled")
-
-# Optional tcmalloc
-set(TPCC_USE_TCMALLOC "AUTO" CACHE STRING "Link tcmalloc into the tpcc binary: AUTO, ON, or OFF")
-set_property(CACHE TPCC_USE_TCMALLOC PROPERTY STRINGS AUTO ON OFF)
-
-if(NOT TPCC_USE_TCMALLOC STREQUAL "OFF")
-    if(TPCC_USE_TCMALLOC STREQUAL "ON")
-        find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal REQUIRED)
-    else()
-        find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal)
+    if(OpenSSL_FOUND)
+        target_link_libraries(tpcc PRIVATE OpenSSL::SSL OpenSSL::Crypto)
     endif()
 
-    if(TCMALLOC_LIB)
-        target_link_libraries(tpcc PRIVATE ${TCMALLOC_LIB})
-        target_compile_options(tpcc PRIVATE
-            -fno-builtin-malloc
-            -fno-builtin-calloc
-            -fno-builtin-realloc
-            -fno-builtin-free
+    if(TPCC_HAS_TUI)
+        target_link_libraries(tpcc PRIVATE
+            ftxui::screen
+            ftxui::dom
+            ftxui::component
         )
-        message(STATUS "tpcc: linking tcmalloc (${TCMALLOC_LIB})")
-    else()
-        message(STATUS "tpcc: tcmalloc not found, using system malloc")
+        target_compile_definitions(tpcc PRIVATE TPCC_HAS_TUI=1)
     endif()
+
+    target_compile_options(tpcc PRIVATE -Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(tpcc PRIVATE -fcoroutines)
+    endif()
+
+    message(STATUS "tpcc: OceanBase Connector/C build enabled")
+
+    # Optional tcmalloc
+    set(TPCC_USE_TCMALLOC "AUTO" CACHE STRING "Link tcmalloc into the tpcc binary: AUTO, ON, or OFF")
+    set_property(CACHE TPCC_USE_TCMALLOC PROPERTY STRINGS AUTO ON OFF)
+
+    if(NOT TPCC_USE_TCMALLOC STREQUAL "OFF")
+        if(TPCC_USE_TCMALLOC STREQUAL "ON")
+            find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal REQUIRED)
+        else()
+            find_library(TCMALLOC_LIB NAMES tcmalloc tcmalloc_minimal)
+        endif()
+
+        if(TCMALLOC_LIB)
+            target_link_libraries(tpcc PRIVATE ${TCMALLOC_LIB})
+            target_compile_options(tpcc PRIVATE
+                -fno-builtin-malloc
+                -fno-builtin-calloc
+                -fno-builtin-realloc
+                -fno-builtin-free
+            )
+            message(STATUS "tpcc: linking tcmalloc (${TCMALLOC_LIB})")
+        else()
+            message(STATUS "tpcc: tcmalloc not found, using system malloc")
+        endif()
+    endif()
+else()
+    message(STATUS
+        "OceanBase Connector/C not found: skipping tpcc / tpcc_ob_tests. "
+        "Install LibOBClient (docs/LIBOBCLIENT.md) or pass -DTPCC_REQUIRE_OBCLIENT=ON")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -240,48 +255,52 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
     add_test(NAME tpcc_tests COMMAND tpcc_tests)
     message(STATUS "Test target 'tpcc_tests' enabled")
 
-    add_executable(tpcc_ob_tests
-        src/ut/ob_connection_ut.cpp
-        src/db/connection.cpp
-        src/db/session.cpp
-        src/db/connection_pool.cpp
-        ${TPCC_TEST_LIB_SOURCES}
-    )
-    target_include_directories(tpcc_ob_tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-        ${OBClient_INCLUDE_DIRS}
-    )
-    target_link_libraries(tpcc_ob_tests PRIVATE
-        GTest::gtest
-        GTest::gtest_main
-        ${OBClient_LIBRARIES}
-        spdlog::spdlog
-        fmt::fmt
-        Threads::Threads
-        dl
-        m
-    )
-    if(OpenSSL_FOUND)
-        target_link_libraries(tpcc_ob_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    if(OBClient_FOUND)
+        add_executable(tpcc_ob_tests
+            src/ut/ob_connection_ut.cpp
+            src/db/connection.cpp
+            src/db/session.cpp
+            src/db/connection_pool.cpp
+            ${TPCC_TEST_LIB_SOURCES}
+        )
+        target_include_directories(tpcc_ob_tests PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${OBClient_INCLUDE_DIRS}
+        )
+        target_link_libraries(tpcc_ob_tests PRIVATE
+            GTest::gtest
+            GTest::gtest_main
+            ${OBClient_LIBRARIES}
+            spdlog::spdlog
+            fmt::fmt
+            Threads::Threads
+            dl
+            m
+        )
+        if(OpenSSL_FOUND)
+            target_link_libraries(tpcc_ob_tests PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+        endif()
+        target_compile_options(tpcc_ob_tests PRIVATE -Wall -Wextra -Wpedantic)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(tpcc_ob_tests PRIVATE -fcoroutines)
+        endif()
+        add_test(NAME tpcc_ob_tests COMMAND tpcc_ob_tests)
+        set_tests_properties(tpcc_ob_tests PROPERTIES LABELS "ob" TIMEOUT 120)
+        message(STATUS "Test target 'tpcc_ob_tests' enabled")
     endif()
-    target_compile_options(tpcc_ob_tests PRIVATE -Wall -Wextra -Wpedantic)
-    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-        target_compile_options(tpcc_ob_tests PRIVATE -fcoroutines)
-    endif()
-    add_test(NAME tpcc_ob_tests COMMAND tpcc_ob_tests)
-    set_tests_properties(tpcc_ob_tests PROPERTIES LABELS "ob" TIMEOUT 120)
-    message(STATUS "Test target 'tpcc_ob_tests' enabled")
 else()
     message(STATUS "third_party/googletest not found: tests disabled")
 endif()
 
-add_test(
-    NAME smoke_test
-    COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.sh
-    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-set_tests_properties(smoke_test PROPERTIES
-    LABELS "ob"
-    TIMEOUT 600
-    ENVIRONMENT "TPCC_BIN=$<TARGET_FILE:tpcc>"
-)
+if(TARGET tpcc)
+    add_test(
+        NAME smoke_test
+        COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/tests/smoke_test.sh
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    set_tests_properties(smoke_test PROPERTIES
+        LABELS "ob"
+        TIMEOUT 600
+        ENVIRONMENT "TPCC_BIN=$<TARGET_FILE:tpcc>"
+    )
+endif()
