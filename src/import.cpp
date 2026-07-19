@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <iomanip>
 #include <optional>
@@ -472,11 +473,34 @@ void LoadWarehouse(ObSession& session, int wh, TImportState& state) {
     state.WarehousesLoaded.fetch_add(1, std::memory_order_relaxed);
 }
 
+int64_t AnalyzeQueryTimeoutMicros(size_t warehouseCount) {
+    // OceanBase default ob_query_timeout is 10s; ANALYZE on large TPC-C tables needs more.
+    constexpr int64_t kMinSec = 600;
+    constexpr int64_t kSecPerWarehouse = 120;
+    const int64_t timeoutSec =
+        std::max(kMinSec, static_cast<int64_t>(warehouseCount) * kSecPerWarehouse);
+    return timeoutSec * 1'000'000;
+}
+
+void SetAnalyzeQueryTimeout(ObSession& session, size_t warehouseCount) {
+    const int64_t timeoutUs = AnalyzeQueryTimeoutMicros(warehouseCount);
+    const int64_t timeoutSec = timeoutUs / 1'000'000;
+    try {
+        session.ExecuteNonTx(fmt::format("SET SESSION ob_query_timeout = {}", timeoutUs)).Get();
+        LOG_I("Set ob_query_timeout to {}s for ANALYZE TABLE", timeoutSec);
+    } catch (const std::exception& ex) {
+        // MariaDB stand-in and other MySQL-compat servers may not have this variable.
+        LOG_W("Could not set ob_query_timeout ({}); continuing with server default", ex.what());
+    }
+}
+
 void AnalyzeTables(const TImportConfig& config) {
     LOG_I("Running ANALYZE TABLE on TPC-C tables...");
     InlineExecutor executor;
     auto session = OpenSession(config, executor);
+    SetAnalyzeQueryTimeout(session, config.WarehouseCount);
     for (const auto* table : TPCC_TABLES) {
+        LOG_I("Analyzing table `{}`...", table);
         // ANALYZE TABLE returns a result set; ExecuteNonTx consumes it.
         session.ExecuteNonTx(fmt::format("ANALYZE TABLE `{}`", table)).Get();
     }
