@@ -13,6 +13,7 @@ find_path(OBClient_INCLUDE_DIR
     NAMES mysql.h
     PATH_SUFFIXES mysql oceanbase obclient
     PATHS
+        $ENV{HOME}/.local/oceanbase/include
         /opt/oceanbase/include
         /u01/obclient/include
         /usr/oceanbase/include
@@ -25,6 +26,7 @@ find_path(OBClient_INCLUDE_DIR
 find_library(OBClient_LIBRARY
     NAMES obclnt obclient
     PATHS
+        $ENV{HOME}/.local/oceanbase/lib
         /opt/oceanbase/lib
         /u01/obclient/lib
         /usr/oceanbase/lib

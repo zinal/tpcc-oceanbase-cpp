@@ -3,35 +3,43 @@
 The `tpcc` binary links **only** against OceanBase Connector/C (`libobclnt` / `libobclient`).
 `libmysqlclient` is not accepted.
 
-## Build from source (recommended on Ubuntu)
+## Script (local + CI)
+
+```bash
+./scripts/install_libobclient.sh                 # default: $HOME/.local/oceanbase
+./scripts/install_libobclient.sh /opt/oceanbase  # custom prefix
+```
+
+Then:
+
+```bash
+export LD_LIBRARY_PATH="${HOME}/.local/oceanbase/lib:${LD_LIBRARY_PATH:-}"
+cmake -B build \
+  -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DTPCC_REQUIRE_OBCLIENT=ON
+cmake --build build -j"$(nproc)"
+```
+
+`FindOBClient.cmake` searches `$HOME/.local/oceanbase`, `/opt/oceanbase`, `/u01/obclient`, and `OBCLIENT_HOME` / `LIBOBCLIENT_HOME`.
+
+## Manual build (equivalent)
 
 ```bash
 git clone --depth 1 https://github.com/oceanbase/obconnector-c.git
 cd obconnector-c
 cmake -B build \
-  -DCMAKE_INSTALL_PREFIX=/opt/oceanbase \
+  -DCMAKE_INSTALL_PREFIX="$HOME/.local/oceanbase" \
   -DWITH_SSL=OPENSSL \
   -DWITH_UNIT_TESTS=OFF \
   -DDEFAULT_CHARSET=utf8mb4
 cmake --build build -j"$(nproc)"
-
-# Install headers + library (upstream `make install` may miss generated headers)
-sudo mkdir -p /opt/oceanbase/{include,lib}
-sudo cp -a include/*.h include/mysql include/mariadb /opt/oceanbase/include/ 2>/dev/null || true
-sudo cp -a build/include/*.h /opt/oceanbase/include/
-sudo cp -a build/libmariadb/libobclnt.so* build/libmariadb/libobclnt.a /opt/oceanbase/lib/
-sudo ln -sf libobclnt.so /opt/oceanbase/lib/libobclient.so
+# headers + libobclnt.so* staged by scripts/install_libobclient.sh
 ```
 
-Then configure this project:
+## CI
 
-```bash
-export LD_LIBRARY_PATH=/opt/oceanbase/lib:${LD_LIBRARY_PATH:-}
-cmake -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release
-cmake --build build -j"$(nproc)"
-```
-
-`FindOBClient.cmake` searches `/opt/oceanbase`, `/u01/obclient`, and `OBCLIENT_HOME` / `LIBOBCLIENT_HOME`.
+GitHub Actions installs LibOBClient via `scripts/install_libobclient.sh` (cached under `.deps/oceanbase`) before configure, with `-DTPCC_REQUIRE_OBCLIENT=ON`.
 
 ## RPM / YUM (RHEL-like)
 
