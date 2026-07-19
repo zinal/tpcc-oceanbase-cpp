@@ -73,12 +73,21 @@ jobs:
       - name: Run unit tests (no DB)
         run: ./build/tpcc_tests
 
-      - name: Run Connector/C adapter tests
+      - name: Run Connector/C + DDL tests
         env:
           TPCC_TEST_CONNECTION: "host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc"
+          # root can CREATE/DROP DATABASE for --path round-trip tests
+          TPCC_TEST_CONNECTION_ADMIN: "host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           ./build/tpcc_ob_tests
+
+      - name: Smoke init + clean CLI
+        run: |
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
+          ./build/tpcc init --connection="${CONN}" --path=tpcc_cli_smoke
+          ./build/tpcc clean --connection="${CONN}" --path=tpcc_cli_smoke
 
       - name: Smoke simulate-select1 via Connector/C
         run: |

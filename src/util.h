@@ -124,7 +124,8 @@ size_t NumberOfMyCpus();
 
 //-----------------------------------------------------------------------------
 
-// Returns the effective PostgreSQL schema name: the given path if non-empty, "public" otherwise.
+// Returns --path if non-empty; otherwise empty (caller should use connection database).
+// Prefer NTPCC::EffectiveDatabase(ParseConnectionString(...)) for the full resolution.
 std::string GetEffectiveSchema(const std::string& path);
 
 } // namespace NTPCC

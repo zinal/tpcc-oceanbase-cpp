@@ -258,9 +258,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
     if(OBClient_FOUND)
         add_executable(tpcc_ob_tests
             src/ut/ob_connection_ut.cpp
+            src/ut/ob_ddl_ut.cpp
             src/db/connection.cpp
             src/db/session.cpp
             src/db/connection_pool.cpp
+            src/init.cpp
+            src/clean.cpp
+            src/path_checker.cpp
             ${TPCC_TEST_LIB_SOURCES}
         )
         target_include_directories(tpcc_ob_tests PRIVATE

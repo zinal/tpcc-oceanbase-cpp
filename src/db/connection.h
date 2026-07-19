@@ -22,6 +22,12 @@ struct ObConnectionConfig {
 // Also accepts space-separated key=value (libpq-like) for smoother migration.
 ObConnectionConfig ParseConnectionString(const std::string& connection);
 
+// Effective TPC-C database: --path if set, otherwise connection database.
+std::string EffectiveDatabase(const ObConnectionConfig& config);
+
+// Validate / backtick-quote a MySQL identifier (database/table/index).
+std::string QuoteIdent(const std::string& ident);
+
 struct ObConnection {
     ObConnection() = default;
     ~ObConnection();
@@ -29,9 +35,13 @@ struct ObConnection {
     ObConnection(const ObConnection&) = delete;
     ObConnection& operator=(const ObConnection&) = delete;
 
-    static std::unique_ptr<ObConnection> Connect(const ObConnectionConfig& config);
+    // If selectDatabase is false, skips initial USE / default schema selection
+    // (needed to CREATE DATABASE before first USE).
+    static std::unique_ptr<ObConnection> Connect(const ObConnectionConfig& config,
+                                                 bool selectDatabase = true);
 
     void UseDatabase(const std::string& database);
+    void CreateDatabaseIfNotExists(const std::string& database);
     void BeginRepeatableRead();
     void Commit();
     void Rollback();

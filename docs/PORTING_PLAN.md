@@ -106,16 +106,16 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 
 **Критерий:** `./build/tpcc run --simulate-select1=5` (линк `libobclnt`) — выполнен.
 
-### Фаза 2 — DDL / clean / path
+### Фаза 2 — DDL / clean / path ✅
 
 | PostgreSQL | OceanBase (MySQL tenant) |
 |------------|--------------------------|
 | `CREATE SCHEMA` + `SET search_path` | `CREATE DATABASE` + `USE` |
 | `DROP TABLE ... CASCADE` | `DROP TABLE IF EXISTS` (порядок по FK) |
-| `CREATE INDEX IF NOT EXISTS` | create-or-ignore / catalog check |
-| `pg_indexes` | `information_schema.statistics` / `SHOW INDEX` |
+| `CREATE INDEX IF NOT EXISTS` | catalog check / ignore 1061 |
+| `pg_indexes` | `information_schema.statistics` |
 
-**Критерий:** `tpcc init -w 10` + `tpcc clean` на OB.
+**Критерий:** `tpcc init` + `tpcc clean` (+ `--path`) — выполнен.
 
 ### Фаза 3 — Bulk import
 
