@@ -32,6 +32,7 @@ Real-time TUI, coroutine-based terminals, CLI: `init` → `import` → `check` �
 # Install LibOBClient first (see docs/LIBOBCLIENT.md), then:
 git submodule update --init --recursive
 export LD_LIBRARY_PATH=/opt/oceanbase/lib:${LD_LIBRARY_PATH:-}
+# export LD_LIBRARY_PATH=/home/demo/.local/oceanbase/lib
 cmake -B build -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=Release \
   -DTPCC_REQUIRE_OBCLIENT=ON
 cmake --build build -j"$(nproc)"
