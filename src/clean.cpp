@@ -5,6 +5,8 @@
 #include "log.h"
 #include "util.h"
 
+#include <fmt/format.h>
+
 #include <stdexcept>
 #include <string>
 
@@ -66,6 +68,14 @@ void CleanSync(const std::string& connectionString, const std::string& path) {
     DropTable(*conn, TABLE_STOCK);
     DropTable(*conn, TABLE_ITEM);
     DropTable(*conn, TABLE_WAREHOUSE);
+
+    try {
+        conn->ExecuteSimple(
+            fmt::format("DROP TABLEGROUP IF EXISTS {}", TABLEGROUP_TPCC));
+        LOG_I("Table group '{}' dropped", TABLEGROUP_TPCC);
+    } catch (const std::exception& ex) {
+        LOG_W("Failed to drop table group '{}': {}", TABLEGROUP_TPCC, ex.what());
+    }
 
     // --path means a dedicated database for the benchmark: drop it after tables.
     if (!path.empty()) {
