@@ -1,7 +1,6 @@
 #pragma once
 
-// Target binding API for OceanBase / MySQL C client (placeholders: ?).
-// Replaces pqxx::params from the PostgreSQL baseline.
+// Binding API for OceanBase Connector/C (placeholders: ?).
 
 #include <cstdint>
 #include <string>

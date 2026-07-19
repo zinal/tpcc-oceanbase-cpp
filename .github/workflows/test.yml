@@ -11,11 +11,11 @@ env:
 
 jobs:
   unit-tests:
-    name: Unit Tests
+    name: Unit Tests (MariaDB stand-in)
     runs-on: ubuntu-24.04
     services:
-      # MySQL wire-protocol stand-in so Connector/C adapter tests hit a real server.
-      # Production target remains OceanBase; Phase 1 SELECT/RR surface is compatible.
+      # MySQL wire-protocol stand-in so Connector/C tests hit a real server.
+      # Production target remains OceanBase CE (see oceanbase-ce-smoke job).
       mariadb:
         image: mariadb:10.11
         env:
@@ -76,50 +76,40 @@ jobs:
       - name: Run Connector/C + DDL + bulk tests
         env:
           TPCC_TEST_CONNECTION: "host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc"
-          # root can CREATE/DROP DATABASE for --path round-trip tests
           TPCC_TEST_CONNECTION_ADMIN: "host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
-          # Full w=1 import / check are covered by the CLI smoke step below.
           TPCC_SKIP_IMPORT_UT: "1"
           TPCC_SKIP_CHECK_UT: "1"
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           ./build/tpcc_ob_tests
 
-      - name: Smoke init + clean CLI
+      - name: End-to-end smoke via tests/smoke_test.sh
+        env:
+          TPCC_BIN: ./build/tpcc
+          OB_HOST: 127.0.0.1
+          OB_PORT: "3306"
+          OB_USER: root
+          OB_PASSWORD: tpcc
+          TPCC_WAREHOUSES: "1"
+          TPCC_DURATION_SECONDS: "15"
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
-          CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
-          ./build/tpcc init --connection="${CONN}" --path=tpcc_cli_smoke
-          ./build/tpcc clean --connection="${CONN}" --path=tpcc_cli_smoke
+          chmod +x tests/smoke_test.sh tests/common.sh
+          ./tests/smoke_test.sh
 
-      - name: Smoke init + import + check + run + check + clean (w=1)
+      - name: Path isolation smoke via tests/path_test.sh
+        env:
+          TPCC_BIN: ./build/tpcc
+          OB_HOST: 127.0.0.1
+          OB_PORT: "3306"
+          OB_USER: root
+          OB_PASSWORD: tpcc
+          TPCC_WAREHOUSES: "1"
+          TPCC_DURATION_SECONDS: "10"
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
-          CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
-          ./build/tpcc init --connection="${CONN}" --path=tpcc_run_smoke
-          ./build/tpcc import --connection="${CONN}" --path=tpcc_run_smoke \
-            -w 1 -t 1 --no-tui
-          mysql -h127.0.0.1 -P3306 -uroot -ptpcc -N -e \
-            "SELECT COUNT(*) FROM tpcc_run_smoke.warehouse" | grep -qx 1
-          ./build/tpcc check \
-            --connection="${CONN}" \
-            --path=tpcc_run_smoke \
-            --warehouses=1 \
-            --after-import
-          ./build/tpcc run \
-            --connection="${CONN}" \
-            --path=tpcc_run_smoke \
-            --warehouses=1 \
-            --duration-seconds=15 \
-            --no-tui \
-            --skip-warmup \
-            --no-delays \
-            -t 2
-          ./build/tpcc check \
-            --connection="${CONN}" \
-            --path=tpcc_run_smoke \
-            --warehouses=1
-          ./build/tpcc clean --connection="${CONN}" --path=tpcc_run_smoke
+          chmod +x tests/path_test.sh tests/common.sh
+          ./tests/path_test.sh
 
       - name: Smoke simulate-select1 via Connector/C
         run: |
@@ -132,3 +122,98 @@ jobs:
             --no-tui \
             --skip-warmup \
             --no-delays
+
+  # Optional: real OceanBase CE. Soft-fail when the image/daemon cannot start
+  # (large pull, long boot, restricted overlay). MariaDB job above is required.
+  oceanbase-ce-smoke:
+    name: OceanBase CE smoke (optional)
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-20 cmake git libssl-dev zlib1g-dev
+
+      - name: Cache LibOBClient
+        id: cache-obclient
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.OBCLIENT_PREFIX }}
+          key: libobclient-${{ runner.os }}-${{ hashFiles('scripts/install_libobclient.sh') }}-v1
+
+      - name: Build and install OceanBase Connector/C
+        if: steps.cache-obclient.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/install_libobclient.sh
+          ./scripts/install_libobclient.sh "${OBCLIENT_PREFIX}"
+
+      - name: Build tpcc
+        run: |
+          echo "LD_LIBRARY_PATH=${OBCLIENT_PREFIX}/lib" >> "$GITHUB_ENV"
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          cmake -B build \
+            -DCMAKE_CXX_COMPILER=clang++-20 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DTPCC_REQUIRE_OBCLIENT=ON \
+            -DOBClient_INCLUDE_DIR="${OBCLIENT_PREFIX}/include" \
+            -DOBClient_LIBRARY="${OBCLIENT_PREFIX}/lib/libobclnt.so"
+          cmake --build build --target tpcc -j"$(nproc)"
+
+      - name: Start OceanBase CE
+        id: start-ob
+        run: |
+          set +e
+          docker compose pull
+          pull_rc=$?
+          if [[ $pull_rc -ne 0 ]]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "OceanBase CE image pull failed; skipping smoke."
+            exit 0
+          fi
+          docker compose up -d
+          up_rc=$?
+          if [[ $up_rc -ne 0 ]]; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            echo "OceanBase CE failed to start; skipping smoke."
+            exit 0
+          fi
+          chmod +x scripts/wait_for_oceanbase.sh
+          if ! ./scripts/wait_for_oceanbase.sh; then
+            echo "skip=1" >> "$GITHUB_OUTPUT"
+            docker compose logs --no-color | tail -100 || true
+            echo "OceanBase CE did not become healthy; skipping smoke."
+            exit 0
+          fi
+          # Prefer obclient from the container if host has none.
+          if ! command -v obclient >/dev/null 2>&1; then
+            echo '#!/usr/bin/env bash' > /tmp/obclient-wrap
+            echo 'exec docker compose exec -T oceanbase obclient "$@"' >> /tmp/obclient-wrap
+            chmod +x /tmp/obclient-wrap
+            sudo ln -sf /tmp/obclient-wrap /usr/local/bin/obclient
+          fi
+          echo "skip=0" >> "$GITHUB_OUTPUT"
+
+      - name: Run smoke_test.sh on OceanBase CE
+        if: steps.start-ob.outputs.skip != '1'
+        env:
+          TPCC_BIN: ./build/tpcc
+          OB_HOST: 127.0.0.1
+          OB_PORT: "2881"
+          OB_USER: root@test
+          OB_PASSWORD: tpcc
+          TPCC_WAREHOUSES: "1"
+          TPCC_DURATION_SECONDS: "15"
+        run: |
+          export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
+          chmod +x tests/smoke_test.sh tests/common.sh
+          ./tests/smoke_test.sh
+
+      - name: Tear down OceanBase CE
+        if: always()
+        run: docker compose down -v || true

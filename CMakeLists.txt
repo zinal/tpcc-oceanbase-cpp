@@ -317,7 +317,7 @@ if(TARGET tpcc)
     )
     set_tests_properties(smoke_test PROPERTIES
         LABELS "ob"
-        TIMEOUT 600
-        ENVIRONMENT "TPCC_BIN=$<TARGET_FILE:tpcc>"
+        TIMEOUT 900
+        ENVIRONMENT "TPCC_BIN=$<TARGET_FILE:tpcc>;TPCC_WAREHOUSES=1;TPCC_DURATION_SECONDS=30"
     )
 endif()

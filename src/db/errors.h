@@ -7,7 +7,6 @@
 namespace NTPCC {
 
 // MySQL / OceanBase error classification for transaction retry.
-// Baseline used catch (pqxx::transaction_rollback). Map server codes here.
 enum class DbErrorKind {
     Other,
     Deadlock,          // MySQL 1213 (ER_LOCK_DEADLOCK)
@@ -23,6 +22,8 @@ inline DbErrorKind ClassifyDbError(int nativeCode, std::string_view /*message*/ 
             return DbErrorKind::Deadlock;
         case 1205:
             return DbErrorKind::LockWaitTimeout;
+        case 6235: // OceanBase: can't serialize access for this transaction
+            return DbErrorKind::SerializationFailure;
         case 1317: // ER_QUERY_INTERRUPTED (KILL QUERY during shutdown)
             return DbErrorKind::Shutdown;
         case 2006: // CR_SERVER_GONE_ERROR

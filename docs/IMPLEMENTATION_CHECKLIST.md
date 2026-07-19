@@ -57,8 +57,8 @@
 
 ## Phase 6 — CI / docs
 
-- [ ] `docker-compose.yml` smoke verified on OceanBase CE
-- [ ] `tests/*.sh` end-to-end green
-- [ ] GitHub Actions: install LibOBClient + OB smoke
+- [x] `docker-compose.yml` + `scripts/wait_for_oceanbase.sh` for OceanBase CE
+- [x] `tests/*.sh` end-to-end (CI-friendly defaults; MariaDB stand-in + optional CE)
+- [x] GitHub Actions: LibOBClient + required MariaDB smoke + optional OB CE job
 - [x] README / `docs/LIBOBCLIENT.md`
-- [x] No pqxx / libpq in runtime binary
+- [x] No pqxx / libpq / libmysqlclient in runtime binary (`libobclnt` only)

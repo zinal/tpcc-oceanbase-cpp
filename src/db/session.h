@@ -1,8 +1,6 @@
 #pragma once
 
-// Target session API for OceanBase (MySQL C API).
-// Implementation (session.cpp) is Phase 1 of docs/PORTING_PLAN.md.
-// Baseline: src/pg_session.h (libpqxx).
+// Session API for OceanBase Connector/C (async via IExecutor).
 
 #include "db/params.h"
 #include "db/query_result.h"
@@ -48,7 +46,7 @@ public:
     // DDL / session-level statements outside a TPC-C transaction.
     TFuture<QueryResult> ExecuteNonTx(std::string_view sql);
 
-    // Replaces PostgreSQL COPY (pqxx::stream_to). Prefer batched multi-row INSERT.
+    // Batched multi-row INSERT (import path).
     TFuture<void> ExecuteBulk(
         const std::string& tableName,
         const std::vector<std::string>& columns,

@@ -1,3 +1,5 @@
+# OceanBase CE for local / optional CI smoke.
+# First boot is slow; use: docker compose up -d && ./scripts/wait_for_oceanbase.sh
 services:
   oceanbase:
     image: oceanbase/oceanbase-ce:4.3.5-lts
@@ -11,7 +13,6 @@ services:
       OB_DATABASE: tpcc_test
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
-    # OceanBase CE first boot can take several minutes.
     healthcheck:
       test:
         [
@@ -21,4 +22,4 @@ services:
       interval: 10s
       timeout: 10s
       retries: 60
-      start_period: 120s
+      start_period: 180s

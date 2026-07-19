@@ -1,72 +1,71 @@
 #!/usr/bin/env bash
 #
-# Multi-warehouse stress test for TPC-C on OceanBase.
-# Prerequisites: same as smoke_test.sh (Phase 1+ complete).
+# Multi-warehouse stress test for TPC-C on OceanBase / MariaDB stand-in.
+# Prerequisites: same as smoke_test.sh.
 
 set -euo pipefail
 
-TPCC_BIN="${TPCC_BIN:-./build/tpcc}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/common.sh
+source "${SCRIPT_DIR}/common.sh"
+
 TPCC_WAREHOUSES="${TPCC_WAREHOUSES:-5}"
-TPCC_DURATION="${TPCC_DURATION:-1}"
 
-OB_HOST="${OB_HOST:-127.0.0.1}"
-OB_PORT="${OB_PORT:-2881}"
-OB_USER="${OB_USER:-root@test}"
-OB_PASSWORD="${OB_PASSWORD:-tpcc}"
 DB_NAME="tpcc_stress_$$"
-
-if ! command -v obclient >/dev/null 2>&1; then
-    echo "ERROR: obclient not found (OceanBase CLI required)" >&2
-    exit 1
-fi
-
-ob_cli() {
-    obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-}
-
-CONNECTION="host=${OB_HOST};port=${OB_PORT};user=${OB_USER};password=${OB_PASSWORD};database=${DB_NAME}"
+CONNECTION="$(make_connection tpcc)"
 
 cleanup() {
     echo "--- Cleaning up ---"
-    "${TPCC_BIN}" clean --connection="${CONNECTION}" 2>/dev/null || true
-    ob_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
+    "${TPCC_BIN}" clean --connection="${CONNECTION}" --path="${DB_NAME}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
-echo "=== TPC-C Stress Test (OceanBase) ==="
+require_tpcc_bin
+
+echo "=== TPC-C Stress Test ==="
 echo "Binary:     ${TPCC_BIN}"
-echo "Database:   ${DB_NAME}"
+echo "Database:   ${DB_NAME} (--path)"
 echo "Warehouses: ${TPCC_WAREHOUSES}"
-echo "Duration:   ${TPCC_DURATION} min"
+if [[ "${TPCC_DURATION_SECONDS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Duration:   ${TPCC_DURATION_SECONDS}s"
+else
+    echo "Duration:   ${TPCC_DURATION} min"
+fi
 echo ""
 
-if [[ ! -x "${TPCC_BIN}" ]]; then
-    echo "ERROR: ${TPCC_BIN} not found or not executable" >&2
-    exit 1
-fi
-
-echo "--- Creating database ---"
-ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
-
 echo "--- Initializing schema ---"
-"${TPCC_BIN}" init --connection="${CONNECTION}"
+"${TPCC_BIN}" init --connection="${CONNECTION}" --path="${DB_NAME}"
 
 echo "--- Importing data (${TPCC_WAREHOUSES} warehouses) ---"
-"${TPCC_BIN}" import --warehouses="${TPCC_WAREHOUSES}" --connection="${CONNECTION}"
+"${TPCC_BIN}" import \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
+    --warehouses="${TPCC_WAREHOUSES}" \
+    --no-tui
 
 echo "--- Checking after import ---"
-"${TPCC_BIN}" check --warehouses="${TPCC_WAREHOUSES}" --after_import --connection="${CONNECTION}"
-
-echo "--- Running benchmark (${TPCC_DURATION} min, no delays, no TUI) ---"
-"${TPCC_BIN}" run \
+"${TPCC_BIN}" check \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
     --warehouses="${TPCC_WAREHOUSES}" \
-    --duration="${TPCC_DURATION}" \
-    --no_delays \
-    --no_tui \
-    --connection="${CONNECTION}"
+    --after-import
+
+# shellcheck disable=SC2046
+echo "--- Running benchmark (no delays) ---"
+"${TPCC_BIN}" run \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
+    --warehouses="${TPCC_WAREHOUSES}" \
+    $(run_duration_args) \
+    --no-delays \
+    --no-tui \
+    --skip-warmup
 
 echo "--- Checking after benchmark ---"
-"${TPCC_BIN}" check --warehouses="${TPCC_WAREHOUSES}" --connection="${CONNECTION}"
+"${TPCC_BIN}" check \
+    --connection="${CONNECTION}" \
+    --path="${DB_NAME}" \
+    --warehouses="${TPCC_WAREHOUSES}"
 
 echo ""
 echo "=== Stress test PASSED ==="
