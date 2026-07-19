@@ -175,8 +175,10 @@ bool TpccObTest::SetupOK = false;
 TEST(DbErrorClassifyTest, MapsRetryableMysqlCodes) {
     EXPECT_EQ(ClassifyDbError(1213), DbErrorKind::Deadlock);
     EXPECT_EQ(ClassifyDbError(1205), DbErrorKind::LockWaitTimeout);
+    EXPECT_EQ(ClassifyDbError(1317), DbErrorKind::Shutdown);
     EXPECT_TRUE(DbError(1213, "deadlock").Retryable());
     EXPECT_TRUE(DbError(1205, "lock wait").Retryable());
+    EXPECT_FALSE(DbError(1317, "interrupted").Retryable());
     EXPECT_FALSE(DbError(1062, "duplicate").Retryable());
     EXPECT_FALSE(DbError(2006, "gone").Retryable());
 }
