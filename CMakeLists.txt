@@ -260,6 +260,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
             src/ut/ob_connection_ut.cpp
             src/ut/ob_ddl_ut.cpp
             src/ut/ob_import_ut.cpp
+            src/ut/ob_transaction_ut.cpp
             src/db/connection.cpp
             src/db/session.cpp
             src/db/connection_pool.cpp
@@ -267,6 +268,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
             src/clean.cpp
             src/import.cpp
             src/path_checker.cpp
+            src/common_queries.cpp
+            src/transaction_neworder.cpp
+            src/transaction_delivery.cpp
+            src/transaction_payment.cpp
+            src/transaction_orderstatus.cpp
+            src/transaction_stocklevel.cpp
+            src/transaction_simulation.cpp
             ${TPCC_TEST_LIB_SOURCES}
         )
         target_include_directories(tpcc_ob_tests PRIVATE

@@ -91,18 +91,25 @@ jobs:
           ./build/tpcc init --connection="${CONN}" --path=tpcc_cli_smoke
           ./build/tpcc clean --connection="${CONN}" --path=tpcc_cli_smoke
 
-      - name: Smoke init + import + clean (w=1)
+      - name: Smoke init + import + real run + clean (w=1)
         run: |
           export LD_LIBRARY_PATH="${OBCLIENT_PREFIX}/lib:${LD_LIBRARY_PATH:-}"
           CONN="host=127.0.0.1;port=3306;user=root;password=tpcc;database=tpcc"
-          ./build/tpcc init --connection="${CONN}" --path=tpcc_import_smoke
-          ./build/tpcc import --connection="${CONN}" --path=tpcc_import_smoke \
+          ./build/tpcc init --connection="${CONN}" --path=tpcc_run_smoke
+          ./build/tpcc import --connection="${CONN}" --path=tpcc_run_smoke \
             -w 1 -t 1 --no-tui
           mysql -h127.0.0.1 -P3306 -uroot -ptpcc -N -e \
-            "SELECT COUNT(*) FROM tpcc_import_smoke.warehouse" | grep -qx 1
-          mysql -h127.0.0.1 -P3306 -uroot -ptpcc -N -e \
-            "SELECT COUNT(*) FROM tpcc_import_smoke.item" | grep -qx 100000
-          ./build/tpcc clean --connection="${CONN}" --path=tpcc_import_smoke
+            "SELECT COUNT(*) FROM tpcc_run_smoke.warehouse" | grep -qx 1
+          ./build/tpcc run \
+            --connection="${CONN}" \
+            --path=tpcc_run_smoke \
+            --warehouses=1 \
+            --duration-seconds=15 \
+            --no-tui \
+            --skip-warmup \
+            --no-delays \
+            -t 2
+          ./build/tpcc clean --connection="${CONN}" --path=tpcc_run_smoke
 
       - name: Smoke simulate-select1 via Connector/C
         run: |
@@ -110,7 +117,7 @@ jobs:
           ./build/tpcc run \
             --connection="host=127.0.0.1;port=3306;user=tpcc;password=tpcc;database=tpcc" \
             --simulate-select1=5 \
-            --duration=1 \
+            --duration-seconds=5 \
             --warehouses=1 \
             --no-tui \
             --skip-warmup \

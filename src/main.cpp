@@ -24,6 +24,8 @@ DEFINE_int32(warehouses, 1, "Number of warehouses");
 DEFINE_int32(warmup, 0, "Warmup duration in minutes (0 = adaptive)");
 DEFINE_bool(skip_warmup, false, "Skip warmup entirely and start measurement immediately");
 DEFINE_int32(duration, 10, "Benchmark run duration in minutes");
+DEFINE_int32(duration_seconds, 0,
+    "If > 0, overrides --duration with an explicit run length in seconds (CI/smoke)");
 DEFINE_int32(threads, 0, "Number of threads (coroutines for run, importers for import); 0 = auto");
 DEFINE_int32(max_inflight, NTPCC::DEFAULT_MAX_INFLIGHT, "Max inflight transactions");
 DEFINE_bool(no_delays, false, "Disable keying and think time delays");
@@ -57,6 +59,7 @@ void PrintHelp() {
         "  --warmup              Warmup duration in minutes, 0 = adaptive (default: 0)\n"
         "  --skip-warmup         Skip warmup entirely (default: false)\n"
         "  --duration            Benchmark run duration in minutes (default: 10)\n"
+        "  --duration-seconds    Override --duration with seconds (0 = unused)\n"
         "  -t, --threads         Number of threads (coroutines for run, importers for import);\n"
         "                        0 = auto (default: 0)\n"
         "  -m, --max-inflight    Max inflight transactions (default: 100)\n"
@@ -191,7 +194,9 @@ void RunBenchmark() {
     config.Path = FLAGS_path;
     config.WarehouseCount = FLAGS_warehouses;
     config.WarmupDuration = std::chrono::minutes(FLAGS_warmup);
-    config.RunDuration = std::chrono::minutes(FLAGS_duration);
+    config.RunDuration = FLAGS_duration_seconds > 0
+        ? std::chrono::seconds(FLAGS_duration_seconds)
+        : std::chrono::minutes(FLAGS_duration);
     config.SkipWarmup = FLAGS_skip_warmup;
     config.ThreadCount = FLAGS_threads;
     config.MaxInflight = FLAGS_max_inflight;
