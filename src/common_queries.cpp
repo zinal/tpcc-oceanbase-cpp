@@ -33,7 +33,8 @@ TFuture<QueryResult> GetCustomerById(
     ObSession& session,
     int warehouseID,
     int districtID,
-    int customerID)
+    int customerID,
+    bool forUpdate)
 {
     static constexpr std::string_view sql =
         "SELECT c_first, c_middle, c_last, c_street_1, c_street_2, "
@@ -41,8 +42,17 @@ TFuture<QueryResult> GetCustomerById(
         "c_discount, c_balance, c_ytd_payment, c_payment_cnt, c_since "
         "FROM customer "
         "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?";
+    static constexpr std::string_view sqlForUpdate =
+        "SELECT c_first, c_middle, c_last, c_street_1, c_street_2, "
+        "c_city, c_state, c_zip, c_phone, c_credit, c_credit_lim, "
+        "c_discount, c_balance, c_ytd_payment, c_payment_cnt, c_since "
+        "FROM customer "
+        "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ? "
+        "FOR UPDATE";
 
-    return session.ExecuteQuery(sql, MakeParams(warehouseID, districtID, customerID));
+    return session.ExecuteQuery(
+        forUpdate ? sqlForUpdate : sql,
+        MakeParams(warehouseID, districtID, customerID));
 }
 
 //-----------------------------------------------------------------------------
@@ -51,7 +61,8 @@ TFuture<QueryResult> GetCustomersByLastName(
     ObSession& session,
     int warehouseID,
     int districtID,
-    const std::string& lastName)
+    const std::string& lastName,
+    bool forUpdate)
 {
     static constexpr std::string_view sql =
         "SELECT c_first, c_middle, c_last, c_id, c_street_1, c_street_2, c_city, "
@@ -60,8 +71,18 @@ TFuture<QueryResult> GetCustomersByLastName(
         "FROM customer "
         "WHERE c_w_id = ? AND c_d_id = ? AND c_last = ? "
         "ORDER BY c_first";
+    static constexpr std::string_view sqlForUpdate =
+        "SELECT c_first, c_middle, c_last, c_id, c_street_1, c_street_2, c_city, "
+        "c_state, c_zip, c_phone, c_credit, c_credit_lim, c_discount, "
+        "c_balance, c_ytd_payment, c_payment_cnt, c_since "
+        "FROM customer "
+        "WHERE c_w_id = ? AND c_d_id = ? AND c_last = ? "
+        "ORDER BY c_first "
+        "FOR UPDATE";
 
-    return session.ExecuteQuery(sql, MakeParams(warehouseID, districtID, lastName));
+    return session.ExecuteQuery(
+        forUpdate ? sqlForUpdate : sql,
+        MakeParams(warehouseID, districtID, lastName));
 }
 
 //-----------------------------------------------------------------------------

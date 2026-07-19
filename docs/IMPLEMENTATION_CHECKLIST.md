@@ -37,7 +37,7 @@
 - [x] Remove PG-only session knobs (`synchronous_commit` / `search_path`)
 - [x] `ANALYZE TABLE`
 - [x] `import -w 1` smoke + `ob_import_ut` / ExecuteBulk UT
-- [ ] `check --after-import` for w=10 (Phase 5)
+- [x] `check --after-import` (Phase 5; CI w=1, manual w=10)
 
 ## Phase 4 — Transactions
 
@@ -50,9 +50,10 @@
 
 ## Phase 5 — Checks
 
-- [ ] Replace `BOOL_AND` / `BOOL_OR`
-- [ ] Replace `FULL JOIN`
-- [ ] Post-run `check` green
+- [x] Replace `BOOL_AND` / `BOOL_OR` (`MIN`/`MAX` 0/1)
+- [x] Replace `FULL JOIN` (LEFT JOIN + UNION ALL)
+- [x] `check --after-import` after import
+- [x] Post-run `check` green (CI smoke)
 
 ## Phase 6 — CI / docs
 

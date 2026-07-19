@@ -49,7 +49,7 @@ void PrintHelp() {
         "  import    Load TPC-C data into the database\n"
         "  run       Run the TPC-C benchmark\n"
         "  clean     Drop TPC-C tables (and --path database if set)\n"
-        "  check     Run TPC-C consistency checks [Phase 5]\n"
+        "  check     Run TPC-C consistency checks\n"
         "\n"
         "Options:\n"
         "  --connection          OceanBase DSN\n"
@@ -76,9 +76,10 @@ void PrintHelp() {
         "Examples:\n"
         "  tpcc init --connection=\"host=127.0.0.1;port=2881;user=root@test;password=tpcc;database=tpcc\"\n"
         "  tpcc import -w 10 --no-tui\n"
+        "  tpcc check --after-import -w 10\n"
         "  tpcc clean -p tpcc_bench\n"
         "  tpcc run --simulate-select1=5 --duration=1 --no-tui\n"
-        "  tpcc check  (Phase 5)\n";
+        "  tpcc check -w 10\n";
 }
 
 spdlog::level::level_enum ParseLogLevel(const std::string& level) {

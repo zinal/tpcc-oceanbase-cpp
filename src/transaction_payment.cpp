@@ -90,7 +90,8 @@ TFuture<bool> GetPaymentTask(
         // Look up by last name
         std::string lastName = GetNonUniformRandomLastNameForRun();
 
-        auto custFuture = GetCustomersByLastName(session, customerWarehouseID, customerDistrictID, lastName);
+        auto custFuture = GetCustomersByLastName(
+            session, customerWarehouseID, customerDistrictID, lastName, /*forUpdate=*/true);
         auto custResult = co_await TSuspendWithFuture(std::move(custFuture), context.TaskQueue, context.TerminalID);
 
         auto selectedCustomer = SelectCustomerFromResultSet(custResult);
@@ -104,7 +105,8 @@ TFuture<bool> GetPaymentTask(
         // Look up by ID
         int customerID = GetRandomCustomerID();
 
-        auto custFuture = GetCustomerById(session, customerWarehouseID, customerDistrictID, customerID);
+        auto custFuture = GetCustomerById(
+            session, customerWarehouseID, customerDistrictID, customerID, /*forUpdate=*/true);
         auto custResult = co_await TSuspendWithFuture(std::move(custFuture), context.TaskQueue, context.TerminalID);
 
         if (!custResult.TryNextRow()) {
@@ -120,6 +122,8 @@ TFuture<bool> GetPaymentTask(
     customer.c_ytd_payment += paymentAmount;
     customer.c_payment_cnt += 1;
 
+    // Relative updates avoid lost Delivery credits if locking is delayed; customer
+    // row is already locked via FOR UPDATE in the lookup helpers above.
     if (customer.c_credit == "BC") {
         // Bad credit: get and update C_DATA
         auto cDataFuture = session.ExecuteQuery(
@@ -140,16 +144,18 @@ TFuture<bool> GetPaymentTask(
         }
 
         auto updFuture = session.ExecuteModify(
-            "UPDATE customer SET c_balance = ?, c_ytd_payment = ?, c_payment_cnt = ?, c_data = ? "
+            "UPDATE customer SET c_balance = c_balance - ?, c_ytd_payment = c_ytd_payment + ?, "
+            "c_payment_cnt = c_payment_cnt + 1, c_data = ? "
             "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
-            MakeParams(customer.c_balance, customer.c_ytd_payment, customer.c_payment_cnt,
-                         newData, customerWarehouseID, customerDistrictID, customer.c_id));
+            MakeParams(paymentAmount, paymentAmount, newData,
+                         customerWarehouseID, customerDistrictID, customer.c_id));
         co_await TSuspendWithFuture(std::move(updFuture), context.TaskQueue, context.TerminalID);
     } else {
         auto updFuture = session.ExecuteModify(
-            "UPDATE customer SET c_balance = ?, c_ytd_payment = ?, c_payment_cnt = ? "
+            "UPDATE customer SET c_balance = c_balance - ?, c_ytd_payment = c_ytd_payment + ?, "
+            "c_payment_cnt = c_payment_cnt + 1 "
             "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
-            MakeParams(customer.c_balance, customer.c_ytd_payment, customer.c_payment_cnt,
+            MakeParams(paymentAmount, paymentAmount,
                          customerWarehouseID, customerDistrictID, customer.c_id));
         co_await TSuspendWithFuture(std::move(updFuture), context.TaskQueue, context.TerminalID);
     }

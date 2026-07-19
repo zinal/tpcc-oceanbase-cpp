@@ -261,12 +261,14 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
             src/ut/ob_ddl_ut.cpp
             src/ut/ob_import_ut.cpp
             src/ut/ob_transaction_ut.cpp
+            src/ut/ob_check_ut.cpp
             src/db/connection.cpp
             src/db/session.cpp
             src/db/connection_pool.cpp
             src/init.cpp
             src/clean.cpp
             src/import.cpp
+            src/check.cpp
             src/path_checker.cpp
             src/common_queries.cpp
             src/transaction_neworder.cpp
