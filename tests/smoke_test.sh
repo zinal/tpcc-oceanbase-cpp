@@ -5,7 +5,7 @@
 # Prerequisites (after Phase 1 of docs/PORTING_PLAN.md):
 #   - OceanBase reachable (e.g. docker compose up -d)
 #   - tpcc binary built against libobclient/libmysqlclient
-#   - mysql or obclient CLI available to create/drop the test database
+#   - obclient CLI available to create/drop the test database
 #
 # Usage:
 #   tests/smoke_test.sh
@@ -14,7 +14,7 @@
 # Environment:
 #   TPCC_BIN, TPCC_WAREHOUSES, TPCC_DURATION
 #   OB_HOST (default 127.0.0.1), OB_PORT (2881)
-#   OB_USER (root@test), OB_PASSWORD (tpcc), OB_DATABASE prefix
+#   OB_USER (root@test), OB_PASSWORD (tpcc)
 
 set -euo pipefail
 
@@ -28,12 +28,13 @@ OB_USER="${OB_USER:-root@test}"
 OB_PASSWORD="${OB_PASSWORD:-tpcc}"
 DB_NAME="tpcc_smoke_$$"
 
-mysql_cli() {
-    if command -v obclient >/dev/null 2>&1; then
-        obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-    else
-        mysql -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-    fi
+if ! command -v obclient >/dev/null 2>&1; then
+    echo "ERROR: obclient not found (OceanBase CLI required)" >&2
+    exit 1
+fi
+
+ob_cli() {
+    obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
 }
 
 # Prefer discrete flags once Phase 1 lands; fall back to a single --connection DSN.
@@ -42,7 +43,7 @@ CONNECTION="host=${OB_HOST};port=${OB_PORT};user=${OB_USER};password=${OB_PASSWO
 cleanup() {
     echo "--- Cleaning up ---"
     "${TPCC_BIN}" clean --connection="${CONNECTION}" 2>/dev/null || true
-    mysql_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
+    ob_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -60,7 +61,7 @@ if [[ ! -x "${TPCC_BIN}" ]]; then
 fi
 
 echo "--- Creating database ---"
-mysql_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
+ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
 
 echo "--- Initializing schema ---"
 "${TPCC_BIN}" init --connection="${CONNECTION}"

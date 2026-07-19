@@ -15,7 +15,7 @@ endif()
 
 # ---------------------------------------------------------------------------
 # Bundled dependencies (git submodules under third_party/)
-# libpqxx was removed — OceanBase uses Connector/C / libmysqlclient.
+# libpqxx removed — runtime client is OceanBase Connector/C (libobclient) only.
 # ---------------------------------------------------------------------------
 
 set(FMT_INSTALL OFF CACHE BOOL "" FORCE)
@@ -173,12 +173,13 @@ if(EXISTS "${TPCC_OB_SESSION_CPP}" AND EXISTS "${TPCC_OB_POOL_CPP}" AND OBClient
         target_compile_options(tpcc PRIVATE -fcoroutines)
     endif()
 
-    message(STATUS "tpcc: OceanBase/MySQL client build enabled")
+    message(STATUS "tpcc: OceanBase Connector/C build enabled")
 else()
     message(STATUS
         "tpcc binary not configured yet — complete Phase 1 in docs/PORTING_PLAN.md "
-        "(implement src/db/session.cpp + connection_pool.cpp, install libobclient/libmysqlclient). "
-        "PostgreSQL baseline sources remain under src/pg_*.cpp for reference.")
+        "(implement src/db/*.cpp, install OceanBase Connector/C / libobclient; "
+        "libmysqlclient is not accepted). "
+        "Temporary PostgreSQL baseline under src/pg_*.cpp will be deleted in Phase 1.")
 endif()
 
 # Optional: link tcmalloc when the main binary exists

@@ -1,6 +1,8 @@
-# SQL dialect gaps: PostgreSQL → OceanBase (MySQL mode)
+# SQL dialect gaps: PostgreSQL → OceanBase (MySQL tenant)
 
 Инвентаризация по baseline `src/` из [tpcc-postgres-cpp](https://github.com/ydb-platform/tpcc-postgres-cpp).
+
+Итоговый продукт — **только OceanBase**. Клиентский драйвер — **OceanBase Connector/C**, не libmysqlclient. Колонка «OB» ниже — SQL MySQL-compatible tenant на сервере.
 
 ## Placeholders
 
@@ -66,5 +68,5 @@ Portable enough as-is: `LIMIT`, `COALESCE`, `ABS`, `COUNT(DISTINCT)`, `UNION ALL
 | PG | OB |
 |----|----|
 | `host=... dbname=... user=postgres` | `host=...;port=2881;user=root@test;database=tpcc` |
-| `createdb` / `dropdb` / `psql` | `mysql` / `obclient` |
+| `createdb` / `dropdb` / `psql` | `obclient` only |
 | port `5432` | port `2881` |

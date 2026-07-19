@@ -1,6 +1,6 @@
-# `src/db` — OceanBase adapter (target)
+# `src/db` — OceanBase Connector/C adapter
 
-This directory defines the **target** database API for the OceanBase port.
+Database access layer for the **OceanBase-only** build.
 
 | File | Role |
 |------|------|
@@ -10,12 +10,10 @@ This directory defines the **target** database API for the OceanBase port.
 | `session.h` | `ObSession` — query/modify/tx/bulk |
 | `connection_pool.h` | Pool + DSN parse |
 
-**Not implemented yet:** `session.cpp`, `connection_pool.cpp`, CMake link to `libobclient`/`libmysqlclient`.
+**Client:** OceanBase Connector/C (`libobclient` / `libobclnt`) only.  
+Do not link `libmysqlclient`.
 
-Until Phase 1 lands, the runnable baseline still lives in:
-
-- `src/pg_session.*`
-- `src/pg_connection_pool.*`
-- `src/query_result.h` (pqxx-backed)
+**Phase 1:** implement `connection.cpp`, `session.cpp`, `connection_pool.cpp`;  
+then delete temporary PostgreSQL baseline (`src/pg_*.cpp`, pqxx `query_result.h`).
 
 See `docs/PORTING_PLAN.md`.

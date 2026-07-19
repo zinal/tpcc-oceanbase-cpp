@@ -22,12 +22,13 @@ DB_NAME="tpcc_path_default_$$"
 # --path target database for benchmark tables.
 PATH_DB="tpcc_bench_$$"
 
-mysql_cli() {
-    if command -v obclient >/dev/null 2>&1; then
-        obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-    else
-        mysql -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
-    fi
+if ! command -v obclient >/dev/null 2>&1; then
+    echo "ERROR: obclient not found (OceanBase CLI required)" >&2
+    exit 1
+fi
+
+ob_cli() {
+    obclient -h"${OB_HOST}" -P"${OB_PORT}" -u"${OB_USER}" -p"${OB_PASSWORD}" "$@"
 }
 
 CONNECTION="host=${OB_HOST};port=${OB_PORT};user=${OB_USER};password=${OB_PASSWORD};database=${DB_NAME}"
@@ -35,8 +36,8 @@ CONNECTION="host=${OB_HOST};port=${OB_PORT};user=${OB_USER};password=${OB_PASSWO
 cleanup() {
     echo "--- Cleaning up ---"
     "${TPCC_BIN}" clean --path="${PATH_DB}" --connection="${CONNECTION}" 2>/dev/null || true
-    mysql_cli -e "DROP DATABASE IF EXISTS \`${PATH_DB}\`;" 2>/dev/null || true
-    mysql_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
+    ob_cli -e "DROP DATABASE IF EXISTS \`${PATH_DB}\`;" 2>/dev/null || true
+    ob_cli -e "DROP DATABASE IF EXISTS \`${DB_NAME}\`;" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -53,13 +54,13 @@ if [[ ! -x "${TPCC_BIN}" ]]; then
 fi
 
 echo "--- Creating databases ---"
-mysql_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
-mysql_cli -e "CREATE DATABASE IF NOT EXISTS \`${PATH_DB}\`;"
+ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\`;"
+ob_cli -e "CREATE DATABASE IF NOT EXISTS \`${PATH_DB}\`;"
 
 # Sentinel in the default database: must survive init/clean of --path DB.
 echo "--- Planting sentinel ${DB_NAME}.customer ---"
-mysql_cli "${DB_NAME}" -e "CREATE TABLE customer (sentinel int);"
-mysql_cli "${DB_NAME}" -e "INSERT INTO customer VALUES (4242);"
+ob_cli "${DB_NAME}" -e "CREATE TABLE customer (sentinel int);"
+ob_cli "${DB_NAME}" -e "INSERT INTO customer VALUES (4242);"
 
 echo "--- init --path=${PATH_DB} ---"
 "${TPCC_BIN}" init --path="${PATH_DB}" --connection="${CONNECTION}"
@@ -79,7 +80,7 @@ echo "--- run --path=${PATH_DB} ---"
     --connection="${CONNECTION}"
 
 echo "--- Verifying sentinel still in default DB ---"
-VAL="$(mysql_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
+VAL="$(ob_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
 if [[ "${VAL}" != "4242" ]]; then
     echo "ERROR: sentinel corrupted or missing (got '${VAL}')" >&2
     exit 1
@@ -89,7 +90,7 @@ echo "--- clean --path=${PATH_DB} ---"
 "${TPCC_BIN}" clean --path="${PATH_DB}" --connection="${CONNECTION}"
 
 echo "--- Verifying sentinel after clean ---"
-VAL="$(mysql_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
+VAL="$(ob_cli -N -e "SELECT sentinel FROM \`${DB_NAME}\`.customer;")"
 if [[ "${VAL}" != "4242" ]]; then
     echo "ERROR: sentinel corrupted after clean (got '${VAL}')" >&2
     exit 1

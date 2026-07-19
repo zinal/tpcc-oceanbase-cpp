@@ -1,31 +1,46 @@
 # План портирования tpcc-postgres-cpp → OceanBase
 
-Исходник: [ydb-platform/tpcc-postgres-cpp](https://github.com/ydb-platform/tpcc-postgres-cpp)  
-Целевой режим: **OceanBase MySQL-compatible tenant** (порт 2881 / MySQL wire protocol).  
-Клиент: **OceanBase Connector/C (libobclient)** или совместимый **libmysqlclient**.
+Исходник: [ydb-platform/tpcc-postgres-cpp](https://github.com/ydb-platform/tpcc-postgres-cpp)
+
+## Решения по скоупу (зафиксировано)
+
+1. **Только OceanBase в итоге.** Dual-stack / запуск тех же тестов на PostgreSQL **не поддерживаем**.  
+   Файлы `pg_session.*`, `pg_connection_pool.*`, pqxx-`query_result.h` и любой PG-only код **удаляются** в ходе порта, а не остаются как альтернативный backend.
+2. **Клиент — штатный OceanBase Connector/C (LibOBClient / `libobclient`).**  
+   Не использовать `libmysqlclient` / MariaDB Connector/C «как совместимый MySQL-драйвер». API у Connector/C совместим по форме с MySQL C API (`mysql.h`, `MYSQL*`), но линковка и поставка — только OB (`-lobclient` / `-lobclnt`, пакеты `libobclient`).
+
+Серверный tenant для TPC-C: **MySQL-compatible tenant** OceanBase (порт 2881) — это режим SQL на сервере, не выбор клиентской библиотеки.
+
+| | Было (upstream) | Цель |
+|--|-----------------|------|
+| СУБД | PostgreSQL | OceanBase CE / Enterprise (MySQL tenant) |
+| Клиент | libpq + libpqxx | **OceanBase Connector/C** only |
+| SQL | PostgreSQL dialect | MySQL-compatible SQL на OB |
+| Тесты | PG docker / `psql` | OB docker / `obclient` |
 
 ## Цель
 
-Сохранить архитектуру бенчмарка (корутины, TUI, CLI `init/import/check/run/clean`, TPC-C mix/delays/warmup) и заменить PostgreSQL/libpqxx слой на OceanBase/MySQL C API с SQL в MySQL-диалекте.
+Сохранить архитектуру бенчмарка (корутины, TUI, CLI `init/import/check/run/clean`, TPC-C mix/delays/warmup) и **полностью** заменить PostgreSQL/libpqxx слой на адаптер над OceanBase Connector/C.
 
-Под *портированием* понимаем то же, что в upstream README:
+Под *портированием* понимаем:
 
-1. Заменить PG-специфичные типы/API на эквиваленты под OceanBase.
-2. Перевести SQL с PostgreSQL-диалекта на MySQL-совместимый.
-3. Заменить `libpqxx` на Connector/C (`MYSQL*`) за тонким адаптером сессии/пула.
+1. Заменить PG-типы/API на OB Connector/C.
+2. Перевести SQL с PostgreSQL-диалекта на диалект MySQL-tenant OceanBase.
+3. Заменить `libpqxx` на тонкий адаптер сессии/пула над Connector/C.
 4. Оставить ядро benchmark/TUI/корутин без изменения семантики TPC-C.
+5. Удалить PostgreSQL baseline из дерева после переключения call site’ов.
 
 ## Что уже есть в репозитории
 
 | Компонент | Статус |
 |-----------|--------|
-| Baseline исходников upstream (src/, tests/, TUI, корутины) | Импортирован |
+| Baseline исходников upstream (включая временно `pg_*`) | Импортирован как материал для порта |
 | План и инвентаризация SQL (`docs/`) | Этот документ + `SQL_DIALECT_GAPS.md` |
-| Целевой интерфейс DB-адаптера (`src/db/`) | Каркас API |
+| Каркас `src/db/` | Headers API |
 | docker-compose / CI / README под OceanBase | Подготовлены |
-| Реализация `ObSession` / MySQL SQL / bulk import | **Следующие фазы** |
+| Реализация на Connector/C + удаление `pg_*` | **Phase 1+** |
 
-## Архитектура upstream (сохраняем)
+## Архитектура (целевая)
 
 ```
 main.cpp
@@ -33,27 +48,26 @@ main.cpp
   ├─ Terminal (корутина) → transactions_*
   ├─ Runner + RunnerTUI / ImportTUI (ftxui)
   ├─ TaskQueue + TimerQueue + ThreadPool(IO)
-  └─ PgSession / PgConnectionPool / QueryResult  ← ЗАМЕНЯЕМ
+  └─ ObSession / ObConnectionPool / QueryResult  ← OceanBase Connector/C
 ```
 
-Важный факт: **libpq async не используется**. DB-вызовы синхронны и гоняются на IO thread pool; корутина ждёт `TFuture`. Это позволяет подставить синхронный MySQL C API без переписывания планировщика.
+**libpq async не используется** в upstream: DB-вызовы синхронны на IO thread pool, корутина ждёт `TFuture`. Синхронный Connector/C (`mysql_real_query` / prepared statements) вписывается в ту же модель.
 
 ## Стратегия адаптера
 
-Ввести DB-нейтральный слой и реализовать его для OceanBase:
-
 ```
 src/db/
-  params.h          — биндинги параметров (?, не $1)
-  query_result.h    — материализованный результат (без pqxx::result)
-  session.h/.cpp    — ObSession: query/modify/commit/rollback/non-tx/bulk
+  params.h              — биндинги для ? (не $1)
+  query_result.h        — материализованный результат
+  session.h/.cpp        — ObSession над MYSQL* из libobclient
   connection_pool.h/.cpp
-  errors.h          — классификация deadlock / lock wait / disconnect
+  errors.h              — deadlock / lock wait / disconnect (коды OB/MySQL-tenant)
+  connection.h/.cpp     — opaque ObConnection, connect/close/kill
 ```
 
-Текущие `pg_session.*` / `pg_connection_pool.*` / `query_result.h` — baseline для портирования; после появления `ObSession` их удалить или оставить как тонкие typedef-алиасы на время миграции.
+CMake: `FindOBClient.cmake` ищет **только** `libobclient` / `libobclnt` и заголовки Connector/C. Fallback на `libmysqlclient` **запрещён**.
 
-### Целевой API сессии (черновик)
+### Целевой API сессии
 
 ```cpp
 TFuture<QueryResult> ExecuteQuery(std::string_view sql, const Params& params = {});
@@ -66,144 +80,134 @@ TFuture<void>        ExecuteBulk(const std::string& table,
                                  BulkWriter writer);
 ```
 
-Транзакции: `START TRANSACTION ISOLATION LEVEL REPEATABLE READ` (или эквивалент OB) при первом query/modify — как сейчас `pqxx::isolation_level::repeatable_read`.
+Транзакции: `START TRANSACTION ISOLATION LEVEL REPEATABLE READ` при первом query/modify.
 
 ## Фазы реализации
 
-### Фаза 0 — подготовка репозитория (этот PR)
+### Фаза 0 — подготовка репозитория
 
 - [x] Импорт baseline upstream
 - [x] Документация плана и SQL gaps
 - [x] Каркас `src/db/`
-- [x] Переориентация CMake / docker-compose / CI / README на OceanBase
-- [x] Убрать `libpqxx` из планируемых submodule-зависимостей
-- [ ] `git submodule update --init` для fmt/spdlog/gflags/ftxui/googletest
+- [x] CMake / docker-compose / CI / README под OceanBase
+- [x] Submodules fmt/spdlog/gflags/ftxui/googletest
+- [x] Уточнение скоупа: OB-only, Connector/C only (этот апдейт)
 
-### Фаза 1 — DB-адаптер OceanBase
+### Фаза 1 — DB-адаптер на OceanBase Connector/C
 
-1. Подключить `libobclient` / `libmysqlclient` в CMake (`FindOBClient.cmake` или `find_package(MySQL)`).
-2. Реализовать `Params` (позиционные `?`) и `QueryResult` поверх `MYSQL_RES` / buffered fetch.
+1. Поставить/собрать **LibOBClient** в окружении; CMake `find_package(OBClient REQUIRED)` без mysqlclient fallback.
+2. Реализовать `ObConnection` + `Params` + `QueryResult` поверх Connector/C (`MYSQL`, `MYSQL_RES`, prepared statements / `?`).
 3. Реализовать `ObSession` + `ObConnectionPool`:
-   - connect: host/port/user/password/database (строка вида MySQL DSN или отдельные флаги);
-   - `--path` → `USE <database>` (не PostgreSQL schema/`search_path`);
-   - `CancelAll`: `KILL QUERY` через отдельное admin-соединение или закрытие сокета (нет 1:1 к `pqxx::cancel_query`).
-4. Юнит-тесты адаптера на живом OB (SELECT 1, RR transaction, bind int/string/decimal).
+   - connect: host/port/user/password/database;
+   - `--path` → `USE <database>`;
+   - `CancelAll`: отдельное соединение + `KILL QUERY` / закрытие сокета.
+4. Переключить runner/terminal/transactions на `ObSession` / `Params`.
+5. **Удалить** `src/pg_session.*`, `src/pg_connection_pool.*`, pqxx-`src/query_result.h`.
+6. Тесты адаптера на живом OB; CLI/help без упоминаний PostgreSQL.
 
-**Критерий готовности:** `./build/tpcc run --simulate-select1=5` против OceanBase.
+**Критерий готовности:** `./build/tpcc run --simulate-select1=5` против OceanBase (линк с `libobclient`).
+
+> init/import/check могут ещё не работать на SQL-диалекте OB до фаз 2–5, но бинарник **не** должен тянуть pqxx/libpq.
 
 ### Фаза 2 — DDL / clean / path
 
-Файлы: `init.cpp`, `clean.cpp`, `path_checker.cpp`.
-
-| PostgreSQL | OceanBase (MySQL mode) |
-|------------|------------------------|
+| PostgreSQL | OceanBase (MySQL tenant) |
+|------------|--------------------------|
 | `CREATE SCHEMA` + `SET search_path` | `CREATE DATABASE` + `USE` |
-| `DROP TABLE ... CASCADE` | `DROP TABLE IF EXISTS` (порядок с учётом FK) |
-| `CREATE INDEX IF NOT EXISTS` | `CREATE INDEX` + игнор «уже есть» / проверка `information_schema` |
+| `DROP TABLE ... CASCADE` | `DROP TABLE IF EXISTS` (порядок по FK) |
+| `CREATE INDEX IF NOT EXISTS` | create-or-ignore / catalog check |
 | `pg_indexes` | `information_schema.statistics` / `SHOW INDEX` |
 
 **Критерий:** `tpcc init -w 10` + `tpcc clean` на OB.
 
 ### Фаза 3 — Bulk import
 
-Файл: `import.cpp` (+ `ExecuteBulk`).
+Вместо COPY / `pqxx::stream_to`:
 
-`pqxx::stream_to` / COPY **недоступен**. Варианты (по приоритету проверки):
+1. Батчевый multi-row `INSERT` (default).
+2. `LOAD DATA LOCAL INFILE` — если поддержан Connector/C + сервером.
+3. OB-specific bulk — только если понадобится скорость.
 
-1. Батчевый multi-row `INSERT INTO t (cols) VALUES (...), (...), ...` (простой, предсказуемый).
-2. `LOAD DATA LOCAL INFILE` (если разрешён на клиенте/сервере).
-3. OceanBase-specific bulk/direct load — если понадобится паритет по скорости с PG COPY.
+Убрать `SET synchronous_commit`; `ANALYZE` → `ANALYZE TABLE`.
 
-Также заменить:
-
-- `SET synchronous_commit = off` → OB session/hint equivalents (или убрать).
-- `ANALYZE table` → `ANALYZE TABLE table`.
-
-**Критерий:** `tpcc import -w 10 -t N` + `tpcc check -w 10 --after-import`.
+**Критерий:** `import -w 10` + `check --after-import`.
 
 ### Фаза 4 — SQL транзакций TPC-C
 
-Файлы: `common_queries.*`, `transaction_*.cpp`.
+1. `$1..$n` → `?`.
+2. `UPDATE ... RETURNING` → `SELECT ... FOR UPDATE` + `UPDATE`.
+3. Simulation: `SELECT CAST(? AS SIGNED)` / `SELECT ?`.
+4. Retry в `terminal.cpp` по `DbError` (deadlock / lock wait), не `pqxx::transaction_rollback`.
 
-Обязательные замены:
-
-1. Плейсхолдеры `$1..$n` → `?`.
-2. `UPDATE ... RETURNING ...` (Payment) → `SELECT ... FOR UPDATE` + `UPDATE` (+ повторный SELECT при необходимости).
-3. `SELECT $1::int` (simulation) → `SELECT CAST(? AS SIGNED)` / `SELECT ?`.
-4. Проверить `FOR UPDATE` + Repeatable Read на OB (deadlock / lock wait timeout codes → retry в `terminal.cpp`).
-
-**Критерий:** `tpcc_ob_tests` (бывш. `tpcc_pg_tests`) зелёные; короткий `run` с `--no-delays`.
+**Критерий:** `tpcc_ob_tests` зелёные; короткий `run --no-delays`.
 
 ### Фаза 5 — Consistency checks
 
-Файл: `check.cpp`.
-
 | PostgreSQL | Замена |
 |------------|--------|
-| `BOOL_AND` / `BOOL_OR` | `MIN(cond)` / `MAX(cond)` или `SUM` |
-| `FULL JOIN` | `LEFT JOIN ... UNION ALL ... WHERE ... IS NULL` |
+| `BOOL_AND` / `BOOL_OR` | `MIN` / `MAX` / `SUM` |
+| `FULL JOIN` | emulate LEFT/RIGHT UNION |
 
-**Критерий:** `tpcc check -w N` после import и после run.
+**Критерий:** `check` после import и после run.
 
 ### Фаза 6 — Интеграция, CI, polish
 
-1. `docker compose up` → `oceanbase/oceanbase-ce` (MODE=mini/slim).
-2. Переписать `tests/smoke_test.sh`, `path_test.sh`, `stress_test.sh` под `mysql`/`obclient` и DSN OceanBase.
-3. CI: unit-tests без DB; smoke на OB service (долгий start_period!).
-4. README: connection string, требования к tenant/user, известные отличия от PG-версии.
-5. Удалить остатки pqxx/PostgreSQL из кода и комментариев.
-6. Профилирование import (батч-размер) и run (pool size / IO threads).
+1. `docker compose` → `oceanbase/oceanbase-ce`.
+2. Интеграционные скрипты только через **`obclient`** (не `psql`, не обязательный `mysql` CLI).
+3. CI: unit-tests; smoke на OB (учитывать долгий boot).
+4. README: установка LibOBClient, DSN, tenant `user@tenant`.
+5. Финальный grep: нет pqxx / libpq / libmysqlclient / «PostgreSQL» в runtime-коде.
+6. Тюнинг batch import и pool sizes.
 
 ## Риски
 
 | Риск | Уровень | Митигация |
 |------|---------|-----------|
-| Семантика RR / locking отличается от PostgreSQL | Высокий | Явные тесты транзакций; карта error codes для retry |
-| Производительность import без COPY | Высокий | Батчи + измерение; опционально LOAD DATA |
-| `RETURNING` в Payment | Средний | Переписать на SELECT+UPDATE |
-| Cancel/shutdown соединений | Средний | KILL QUERY / close; дождаться IO pool на shutdown |
-| `--path` как schema | Средний | Переопределить как database name |
-| Decimal/timestamp edge cases | Средний | Сверить check/after-import invariants |
-| Корутины / TUI | Низкий | Не трогать без нужды |
+| Доставка LibOBClient в CI/dev (не всегда в apt) | Высокий | Документировать RPM/YUM/build from [oceanbase/obclient](https://github.com/oceanbase/obclient) / obconnector-c; кэш артефакта |
+| RR / locking ≠ PostgreSQL | Высокий | Тесты транзакций; карта error codes |
+| Import без COPY | Высокий | Батчи; опционально LOAD DATA |
+| `RETURNING` | Средний | SELECT + UPDATE |
+| Cancel/shutdown | Средний | KILL QUERY через admin conn |
+| `--path` | Средний | database name + `USE` |
 
-## Параметры подключения (целевые)
-
-Рекомендуемый формат флагов (вместо libpq conninfo):
+## Параметры подключения
 
 ```
 --host=127.0.0.1 --port=2881 --user=root@test --password=... --database=tpcc
 ```
 
-Либо одна строка:
+или
 
 ```
 --connection="host=127.0.0.1;port=2881;user=root@test;password=...;database=tpcc"
 ```
 
-Default tenant в docker-compose: `test`, user `root@test`, SQL port `2881`.
+Docker-compose: tenant `test`, user `root@test`, SQL port `2881`.
 
 ## Зависимости сборки
 
-| Было (PG) | Станет (OB) |
-|-----------|-------------|
-| Clang 16+, C++23 | без изменений |
-| `libpq-dev` + submodule `libpqxx` | `libobclient-dev` **или** `libmysqlclient-dev` |
-| fmt, spdlog, gflags, ftxui, googletest (submodules) | те же |
-| tcmalloc (опционально) | без изменений |
-| `postgres:18` docker | `oceanbase/oceanbase-ce` |
+| | Требование |
+|--|------------|
+| Компилятор | Clang 16+, C++23 |
+| Клиент БД | **OceanBase Connector/C (`libobclient`)** — обязательно |
+| Не использовать | libpq, libpqxx, **libmysqlclient** |
+| Submodules | fmt, spdlog, gflags, ftxui, googletest |
+| Опционально | tcmalloc |
+| Runtime для тестов | `oceanbase/oceanbase-ce` + CLI `obclient` |
 
-## Порядок работ для следующего агента/итерации
+## Порядок работ (Phase 1)
 
-1. Инициализировать submodules (`fmt`, `spdlog`, `gflags`, `ftxui`, `googletest`).
-2. Установить client library OceanBase/MySQL в окружении.
-3. Реализовать Фазу 1 (`src/db/*`), переключить CMake с pqxx на новый адаптер.
-4. Массово заменить includes `pg_session.h` → `db/session.h` и типы `pqxx::params` → `Params`.
-5. Фазы 2→5 по чеклисту в `docs/IMPLEMENTATION_CHECKLIST.md`.
-6. Прогнать smoke на docker OceanBase.
+1. Установить LibOBClient в окружении агента/CI.
+2. Ужесточить `FindOBClient.cmake` (только obclient/obclnt).
+3. Реализовать `src/db/*.cpp`, переключить call site’ы, удалить `pg_*`.
+4. Собрать `tpcc`, прогнать `--simulate-select1=5` на OceanBase.
+5. Далее фазы 2→5 по `IMPLEMENTATION_CHECKLIST.md`.
 
-## Вне скоупа (пока)
+## Вне скоупа
 
-- Oracle mode tenant OceanBase.
-- Нативный async MySQL nonblocking API (epoll на сокетах) — текущая модель IO pool достаточна.
-- Паритет скорости import с YDB bulk (upstream тоже отстаёт от YDB).
-- Изменение TPC-C mix / бизнес-логики транзакций.
+- Поддержка PostgreSQL / dual backend.
+- Линковка с `libmysqlclient` «для совместимости».
+- Oracle mode tenant (отдельный диалект SQL).
+- Нативный async nonblocking на сокетах (IO pool достаточен).
+- Паритет скорости import с YDB bulk.
+- Изменение TPC-C mix / бизнес-логики.
