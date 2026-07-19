@@ -18,8 +18,11 @@ fi
 perl -pi -e 's/CMAKE_MINIMUM_REQUIRED\(VERSION 2\.8/CMAKE_MINIMUM_REQUIRED(VERSION 3.5/' \
     "${SRC_DIR}/CMakeLists.txt"
 
+# obconnector-c typedefs `bool` in ma_global.h; that breaks with C23 (GCC 14+ default).
 cmake -S "${SRC_DIR}" -B "${SRC_DIR}/build" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
+    -DCMAKE_C_STANDARD=11 \
+    -DCMAKE_C_STANDARD_REQUIRED=ON \
     -DWITH_SSL=OPENSSL \
     -DWITH_UNIT_TESTS=OFF \
     -DWITH_MYSQLCOMPAT=OFF \
