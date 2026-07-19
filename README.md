@@ -108,10 +108,15 @@ Adjust CPU/memory via OBD options if needed (`obd cluster tenant create --help`)
 
 ### 4. Create the benchmark database and user
 
-Connect to the **user tenant** (default admin is `root@<tenant>`):
+Connect to the **user tenant** (default admin is `root@<tenant>`).
+
+> **Important:** after `obd cluster tenant create`, the `root@tpcc` password is **empty**
+> by default. It is **not** the same as `root@sys`. Do not pass `-p` until you have set a
+> password (step below).
 
 ```bash
-obclient -h<OB_HOST> -P2881 -uroot@tpcc -p -Doceanbase -A
+# new tenant: no password yet — omit -p entirely
+obclient -h<OB_HOST> -P2881 -uroot@tpcc -Doceanbase -A
 ```
 
 Then run:
@@ -133,6 +138,39 @@ GRANT ALL PRIVILEGES ON tpcc.* TO tpcc;
 
 `tpcc init` can also create the database named by `--path` on first run if the account
 has `CREATE` privilege; pre-creating `tpcc` is still recommended for production.
+
+### Troubleshooting `ERROR 1045 (Access denied)`
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `root@tpcc` denied with `-p'...'` | Password not set yet, or wrong password (often confused with `root@sys`) | Connect **without** `-p`, then `ALTER USER root IDENTIFIED BY '...'` |
+| Tenant may not exist | Wrong tenant name or create failed | From `root@sys`: `SELECT TENANT_NAME, STATUS FROM oceanbase.DBA_OB_TENANTS;` |
+| Forgot `root@tpcc` password | — | From `root@sys`: `ALTER USER root@tpcc IDENTIFIED BY '<PASSWORD>';` |
+
+Verify the tenant first:
+
+```bash
+obclient -h<OB_HOST> -P2881 -uroot@sys -p'<SYS_PASSWORD>' -Doceanbase -A \
+  -e "SELECT TENANT_NAME, STATUS FROM oceanbase.DBA_OB_TENANTS WHERE TENANT_NAME='tpcc';"
+```
+
+Then log in with an empty password and set one:
+
+```bash
+obclient -h<OB_HOST> -P2881 -uroot@tpcc -Doceanbase -A
+```
+
+```sql
+ALTER USER root IDENTIFIED BY '<PASSWORD>';
+CREATE DATABASE IF NOT EXISTS tpcc DEFAULT CHARACTER SET utf8mb4;
+```
+
+After that, use the password explicitly (prefer `-p` at the prompt over `-p'...'` in the shell
+to avoid quoting issues):
+
+```bash
+obclient -h<OB_HOST> -P2881 -uroot@tpcc -p -Doceanbase -A
+```
 
 ### 5. DSN for `tpcc`
 
