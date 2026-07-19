@@ -14,6 +14,10 @@ if [[ ! -d "${SRC_DIR}/.git" ]]; then
     git clone --depth 1 "${REPO_URL}" "${SRC_DIR}"
 fi
 
+# obconnector-c still declares CMAKE_MINIMUM_REQUIRED(2.8) on Linux; CMake 4.x rejects that.
+perl -pi -e 's/CMAKE_MINIMUM_REQUIRED\(VERSION 2\.8/CMAKE_MINIMUM_REQUIRED(VERSION 3.5/' \
+    "${SRC_DIR}/CMakeLists.txt"
+
 cmake -S "${SRC_DIR}" -B "${SRC_DIR}/build" \
     -DCMAKE_INSTALL_PREFIX="${PREFIX}" \
     -DWITH_SSL=OPENSSL \
