@@ -45,7 +45,8 @@
 - [x] Payment without `RETURNING` (SELECT FOR UPDATE + UPDATE)
 - [x] Simulation cast for Connector/C
 - [x] Retry via `DbError`
-- [ ] Full `tpcc_ob_tests` transaction suite against loaded schema
+- [x] Full `tpcc_ob_tests` transaction suite against loaded schema (`ob_transaction_ut`)
+- [x] Short CI `run --no-delays` after import (`--duration-seconds`)
 
 ## Phase 5 — Checks
 

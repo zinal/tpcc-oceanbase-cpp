@@ -59,7 +59,7 @@ TFuture<bool> GetOrderStatusTask(
         customer.c_id = customerID;
     }
 
-    // Get the newest order for this customer (PostgreSQL uses the idx_order index automatically)
+    // Get the newest order for this customer (uses idx_order when present)
     auto orderFuture = session.ExecuteQuery(
         "SELECT o_id, o_carrier_id, o_entry_d FROM oorder "
         "WHERE o_w_id = ? AND o_d_id = ? AND o_c_id = ? "

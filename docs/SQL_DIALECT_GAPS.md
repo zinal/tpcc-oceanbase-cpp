@@ -49,10 +49,11 @@
 
 ## Isolation / transactions
 
-| PG | OB |
-|----|----|
-| `pqxx::transaction<repeatable_read>` | `START TRANSACTION ISOLATION LEVEL REPEATABLE READ` |
-| retry on `pqxx::transaction_rollback` | map MySQL/OB errors: deadlock `1213`, lock wait `1205`, etc. |
+| PG | OB (Phase 4) |
+|----|--------------|
+| `pqxx::transaction<repeatable_read>` | `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ` + `START TRANSACTION` |
+| retry on `pqxx::transaction_rollback` | `DbError` / `Retryable()` for `1213`, `1205` |
+| `pg_transaction_ut` | `ob_transaction_ut` against imported w=1 schema |
 
 ## Checks (`check.cpp`)
 

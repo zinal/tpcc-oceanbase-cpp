@@ -161,6 +161,13 @@ TFuture<void> TTerminal::Run() {
                 Stats->IncUserAborted(static_cast<ETransactionType>(txIndex));
                 LOG_T("Terminal {} {} user aborted", Context.TerminalID, txName);
             } catch (const DbError& err) {
+                // CancelAll()/KILL QUERY and stop races are expected at shutdown.
+                if (StopToken.stop_requested()
+                    || err.Kind() == DbErrorKind::Shutdown) {
+                    LOG_D("Terminal {} {} interrupted during shutdown: {}",
+                          Context.TerminalID, txName, err.what());
+                    break;
+                }
                 if (err.Retryable() && attempt < MaxRetries) {
                     shouldRetry = true;
                     LOG_D("Terminal {} {} retryable DB error ({}), retry {}/{}",

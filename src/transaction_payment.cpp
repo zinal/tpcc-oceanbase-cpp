@@ -154,7 +154,7 @@ TFuture<bool> GetPaymentTask(
         co_await TSuspendWithFuture(std::move(updFuture), context.TaskQueue, context.TerminalID);
     }
 
-    // Insert history record (no H_C_NANO_TS for PostgreSQL)
+    // Insert history record
     std::string historyData = warehouseName + "    " + districtName;
     if (historyData.length() > 24) {
         historyData = historyData.substr(0, 24);

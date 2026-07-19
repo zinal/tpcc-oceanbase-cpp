@@ -130,14 +130,15 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 **Критерий:** `import` (CLI/UT w=1 smoke) — выполнен.  
 `check --after-import` / полный прогон w=10 — Phase 5.
 
-### Фаза 4 — SQL транзакций TPC-C
+### Фаза 4 — SQL транзакций TPC-C ✅
 
-1. `$1..$n` → `?`.
-2. `UPDATE ... RETURNING` → `SELECT ... FOR UPDATE` + `UPDATE`.
-3. Simulation: `SELECT CAST(? AS SIGNED)` / `SELECT ?`.
-4. Retry в `terminal.cpp` по `DbError` (deadlock / lock wait), не `pqxx::transaction_rollback`.
+1. [x] `$1..$n` → `?`.
+2. [x] `UPDATE ... RETURNING` → `SELECT ... FOR UPDATE` + `UPDATE`.
+3. [x] Simulation: `SELECT CAST(? AS SIGNED)` / `SELECT ?`.
+4. [x] Retry в `terminal.cpp` по `DbError` (deadlock / lock wait), не `pqxx::transaction_rollback`.
+5. [x] `ob_transaction_ut` на загруженной схеме (w=1); CI smoke `run --no-delays --duration-seconds`.
 
-**Критерий:** `tpcc_ob_tests` зелёные; короткий `run --no-delays`.
+**Критерий:** `tpcc_ob_tests` зелёные; короткий `run --no-delays` — выполнен.
 
 ### Фаза 5 — Consistency checks
 
