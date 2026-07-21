@@ -176,6 +176,7 @@ void PrintFinalResults(
         ? (tpmc / (MAX_TPMC_PER_WAREHOUSE * config.WarehouseCount) * 100.0) : 0.0;
 
     LOG_I("=== TPC-C Results ===");
+    LOG_I("  Scale: {} warehouses", config.WarehouseCount);
     LOG_I("  Measured Duration: {:.1f}s (configured: {}s)",
           measureDuration, config.RunDuration.count());
     LOG_I("  New-Order Throughput: {:.2f} tpmC", tpmc);
