@@ -74,6 +74,17 @@ void EnsureTxn(ObConnection& conn, bool& inTxn) {
     }
 }
 
+void ResetTxnOnError(ObConnection* conn, bool& inTxn) {
+    if (!conn || !inTxn) {
+        return;
+    }
+    try {
+        conn->Rollback();
+    } catch (...) {
+    }
+    inTxn = false;
+}
+
 } // namespace
 
 TFuture<QueryResult> ObSession::ExecuteQuery(std::string_view sql, const Params& params) {
@@ -88,6 +99,7 @@ TFuture<QueryResult> ObSession::ExecuteQuery(std::string_view sql, const Params&
             EnsureTxn(*conn_, inTxn_);
             p.SetValue(conn_->Query(sqlCopy, params));
         } catch (...) {
+            ResetTxnOnError(conn_.get(), inTxn_);
             p.SetException(std::current_exception());
         }
     });
@@ -107,6 +119,7 @@ TFuture<uint64_t> ObSession::ExecuteModify(std::string_view sql, const Params& p
             EnsureTxn(*conn_, inTxn_);
             p.SetValue(conn_->Execute(sqlCopy, params));
         } catch (...) {
+            ResetTxnOnError(conn_.get(), inTxn_);
             p.SetException(std::current_exception());
         }
     });
@@ -238,6 +251,7 @@ TFuture<void> ObSession::ExecuteBulk(
             flush();
             p.SetValue();
         } catch (...) {
+            ResetTxnOnError(conn_.get(), inTxn_);
             p.SetException(std::current_exception());
         }
     });
