@@ -28,8 +28,16 @@ Real-time TUI, coroutine-based terminals, CLI: `init` → `import` → `check` �
 
 ## Build
 
+Full clean rebuild (recommended):
+
 ```bash
 # Install LibOBClient first (see docs/LIBOBCLIENT.md), then:
+./build.sh
+```
+
+Or step by step:
+
+```bash
 git submodule update --init --recursive
 export LD_LIBRARY_PATH=/opt/oceanbase/lib:${LD_LIBRARY_PATH:-}
 # export LD_LIBRARY_PATH=/home/demo/.local/oceanbase/lib
