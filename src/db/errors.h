@@ -12,6 +12,7 @@ enum class DbErrorKind {
     Deadlock,          // MySQL 1213 (ER_LOCK_DEADLOCK)
     LockWaitTimeout,   // MySQL 1205 (ER_LOCK_WAIT_TIMEOUT)
     SerializationFailure,
+    TransactionInvalidated, // OceanBase 6002 (killed / idle timeout / no txn context)
     ConnectionLost,
     Shutdown,
 };
@@ -24,6 +25,8 @@ inline DbErrorKind ClassifyDbError(int nativeCode, std::string_view /*message*/ 
             return DbErrorKind::LockWaitTimeout;
         case 6235: // OceanBase: can't serialize access for this transaction
             return DbErrorKind::SerializationFailure;
+        case 6002: // OceanBase: transaction killed / idle timeout / context missing
+            return DbErrorKind::TransactionInvalidated;
         case 1317: // ER_QUERY_INTERRUPTED (KILL QUERY during shutdown)
             return DbErrorKind::Shutdown;
         case 2006: // CR_SERVER_GONE_ERROR
@@ -37,7 +40,8 @@ inline DbErrorKind ClassifyDbError(int nativeCode, std::string_view /*message*/ 
 inline bool IsRetryableTxError(DbErrorKind kind) {
     return kind == DbErrorKind::Deadlock
         || kind == DbErrorKind::LockWaitTimeout
-        || kind == DbErrorKind::SerializationFailure;
+        || kind == DbErrorKind::SerializationFailure
+        || kind == DbErrorKind::TransactionInvalidated;
 }
 
 class DbError : public std::exception {
