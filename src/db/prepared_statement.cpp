@@ -4,6 +4,7 @@
 #include <mysql.h>
 
 #include <cstring>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -174,63 +175,71 @@ QueryResult MaterializeStmtResult(MYSQL_STMT* stmt, MYSQL_RES* meta) {
 
 } // namespace
 
-struct ObStatementCache::StmtEntry {
-    MYSQL_STMT* stmt = nullptr;
-    bool prepared = false;
-    std::vector<ParamBinding> paramSlots;
-    std::vector<MYSQL_BIND> paramBinds;
+struct ObStatementCache::Impl {
+    struct StmtEntry {
+        MYSQL_STMT* stmt = nullptr;
+        bool prepared = false;
+        std::vector<ParamBinding> paramSlots;
+        std::vector<MYSQL_BIND> paramBinds;
+    };
+
+    MYSQL* mysql = nullptr;
+    StmtEntry entries[static_cast<size_t>(QueryId::Count)];
+
+    explicit Impl(void* mysqlHandle) : mysql(static_cast<MYSQL*>(mysqlHandle)) {}
+
+    StmtEntry& Get(QueryId id) {
+        return entries[static_cast<size_t>(id)];
+    }
+
+    void Prepare(StmtEntry& entry, QueryId id) {
+        if (entry.prepared) {
+            return;
+        }
+
+        entry.stmt = mysql_stmt_init(mysql);
+        if (!entry.stmt) {
+            throw std::runtime_error("mysql_stmt_init failed");
+        }
+
+        const std::string_view sql = QuerySql(id);
+        if (mysql_stmt_prepare(entry.stmt, sql.data(), static_cast<unsigned long>(sql.size())) != 0) {
+            ThrowStmtError(entry.stmt, "mysql_stmt_prepare failed");
+        }
+
+        entry.prepared = true;
+    }
+
+    void Clear() {
+        for (size_t i = 0; i < static_cast<size_t>(QueryId::Count); ++i) {
+            if (entries[i].stmt) {
+                mysql_stmt_close(entries[i].stmt);
+                entries[i].stmt = nullptr;
+            }
+            entries[i].prepared = false;
+            entries[i].paramSlots.clear();
+            entries[i].paramBinds.clear();
+        }
+    }
 };
 
-ObStatementCache::ObStatementCache(MYSQL* mysql) : mysql_(mysql) {
-    entries_ = new StmtEntry[static_cast<size_t>(QueryId::Count)];
-}
+ObStatementCache::ObStatementCache(void* mysql)
+    : impl_(std::make_unique<Impl>(mysql))
+{}
 
 ObStatementCache::~ObStatementCache() {
     Clear();
-    delete[] entries_;
-    entries_ = nullptr;
 }
 
 void ObStatementCache::Clear() {
-    if (!entries_) {
-        return;
+    if (impl_) {
+        impl_->Clear();
     }
-    for (size_t i = 0; i < static_cast<size_t>(QueryId::Count); ++i) {
-        if (entries_[i].stmt) {
-            mysql_stmt_close(entries_[i].stmt);
-            entries_[i].stmt = nullptr;
-        }
-        entries_[i].prepared = false;
-        entries_[i].paramSlots.clear();
-        entries_[i].paramBinds.clear();
-    }
-}
-
-ObStatementCache::StmtEntry& ObStatementCache::Get(QueryId id) {
-    return entries_[static_cast<size_t>(id)];
-}
-
-void ObStatementCache::Prepare(StmtEntry& entry, QueryId id) {
-    if (entry.prepared) {
-        return;
-    }
-
-    entry.stmt = mysql_stmt_init(mysql_);
-    if (!entry.stmt) {
-        throw std::runtime_error("mysql_stmt_init failed");
-    }
-
-    const std::string_view sql = QuerySql(id);
-    if (mysql_stmt_prepare(entry.stmt, sql.data(), static_cast<unsigned long>(sql.size())) != 0) {
-        ThrowStmtError(entry.stmt, "mysql_stmt_prepare failed");
-    }
-
-    entry.prepared = true;
 }
 
 QueryResult ObStatementCache::Query(QueryId id, const Params& params) {
-    StmtEntry& entry = Get(id);
-    Prepare(entry, id);
+    Impl::StmtEntry& entry = impl_->Get(id);
+    impl_->Prepare(entry, id);
 
     entry.paramSlots.resize(params.Size());
     entry.paramBinds.resize(params.Size());
@@ -254,8 +263,8 @@ QueryResult ObStatementCache::Query(QueryId id, const Params& params) {
 }
 
 uint64_t ObStatementCache::Execute(QueryId id, const Params& params) {
-    StmtEntry& entry = Get(id);
-    Prepare(entry, id);
+    Impl::StmtEntry& entry = impl_->Get(id);
+    impl_->Prepare(entry, id);
 
     entry.paramSlots.resize(params.Size());
     entry.paramBinds.resize(params.Size());

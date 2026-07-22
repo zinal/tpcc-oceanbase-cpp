@@ -54,7 +54,7 @@ TEST(ObConnectionTest, SelectOneAndRepeatableRead) {
     auto conn = NTPCC::ObConnection::Connect(cfg);
 
     conn->BeginRepeatableRead();
-    auto result = conn->Query(QueryId::SimulationSelectCastInt, NTPCC::MakeParams(42));
+    auto result = conn->Query(NTPCC::QueryId::SimulationSelectCastInt, NTPCC::MakeParams(42));
     ASSERT_TRUE(result.TryNextRow());
     EXPECT_EQ(result.GetInt32("v"), 42);
 

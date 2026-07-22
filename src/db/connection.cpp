@@ -105,6 +105,15 @@ std::string FormatParam(MYSQL* mysql, const Params::Value& value) {
                 oss.precision(15);
                 oss << v;
                 return oss.str();
+            } else if constexpr (std::is_same_v<T, Params::Timestamp>) {
+                std::ostringstream oss;
+                oss << "'" << v.year << '-'
+                    << v.month << '-'
+                    << v.day << ' '
+                    << v.hour << ':'
+                    << v.minute << ':'
+                    << v.second << '\'';
+                return oss.str();
             } else {
                 return std::to_string(v);
             }
@@ -153,7 +162,7 @@ struct ObConnection::Impl {
     std::unique_ptr<ObStatementCache> stmtCache;
 
     void InitStatementCache() {
-        stmtCache = std::make_unique<ObStatementCache>(mysql);
+        stmtCache = std::make_unique<ObStatementCache>(static_cast<void*>(mysql));
     }
 
     void ClearStatementCache() {

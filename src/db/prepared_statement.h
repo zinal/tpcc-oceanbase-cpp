@@ -4,15 +4,15 @@
 #include "db/queries.h"
 #include "db/query_result.h"
 
-struct MYSQL;
-struct MYSQL_STMT;
+#include <memory>
 
 namespace NTPCC {
 
 // Per-connection prepared statement cache (one handle per QueryId).
 class ObStatementCache {
 public:
-    explicit ObStatementCache(MYSQL* mysql);
+    // Opaque Connector/C connection handle (MYSQL*).
+    explicit ObStatementCache(void* mysql);
     ~ObStatementCache();
 
     ObStatementCache(const ObStatementCache&) = delete;
@@ -24,13 +24,8 @@ public:
     void Clear();
 
 private:
-    struct StmtEntry;
-
-    StmtEntry& Get(QueryId id);
-    void Prepare(StmtEntry& entry, QueryId id);
-
-    MYSQL* mysql_ = nullptr;
-    StmtEntry* entries_ = nullptr;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 };
 
 } // namespace NTPCC
