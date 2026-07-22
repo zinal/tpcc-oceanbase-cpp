@@ -1,6 +1,7 @@
 #include "db/connection.h"
 #include "db/connection_pool.h"
 #include "db/params.h"
+#include "db/queries.h"
 #include "db/session.h"
 
 #include <gtest/gtest.h>
@@ -53,7 +54,7 @@ TEST(ObConnectionTest, SelectOneAndRepeatableRead) {
     auto conn = NTPCC::ObConnection::Connect(cfg);
 
     conn->BeginRepeatableRead();
-    auto result = conn->Query("SELECT CAST(? AS SIGNED) AS v", NTPCC::MakeParams(42));
+    auto result = conn->Query(QueryId::SimulationSelectCastInt, NTPCC::MakeParams(42));
     ASSERT_TRUE(result.TryNextRow());
     EXPECT_EQ(result.GetInt32("v"), 42);
 
@@ -62,6 +63,24 @@ TEST(ObConnectionTest, SelectOneAndRepeatableRead) {
     EXPECT_EQ(result2.GetString("s"), "hello");
 
     conn->Commit();
+}
+
+TEST(ObConnectionTest, SessionIsolationSurvivesCommit) {
+    if (!CanConnect()) {
+        GTEST_SKIP() << "OceanBase not available (set TPCC_TEST_CONNECTION)";
+    }
+
+    auto cfg = NTPCC::ParseConnectionString(TestConnectionString());
+    auto conn = NTPCC::ObConnection::Connect(cfg);
+
+    conn->BeginRepeatableRead();
+    auto result = conn->Query(NTPCC::QueryId::SimulationSelectCastInt, NTPCC::MakeParams(1));
+    ASSERT_TRUE(result.TryNextRow());
+    conn->Commit();
+
+    auto iso = conn->QuerySimple("SELECT @@session.transaction_isolation AS v");
+    ASSERT_TRUE(iso.TryNextRow());
+    EXPECT_EQ(iso.GetString("v"), "REPEATABLE-READ");
 }
 
 TEST(ObSessionTest, ExecuteQueryViaPool) {

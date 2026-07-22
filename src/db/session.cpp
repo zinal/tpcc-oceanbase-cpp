@@ -87,6 +87,42 @@ void ResetTxnOnError(ObConnection* conn, bool& inTxn) {
 
 } // namespace
 
+TFuture<QueryResult> ObSession::ExecuteQuery(QueryId queryId, const Params& params) {
+    TPromise<QueryResult> promise;
+    auto future = promise.GetFuture();
+
+    executor_->Submit([this, queryId, params, p = std::move(promise)]() mutable {
+        try {
+            CheckShutdown();
+            EnsureTxn(*conn_, inTxn_);
+            p.SetValue(conn_->Query(queryId, params));
+        } catch (...) {
+            ResetTxnOnError(conn_.get(), inTxn_);
+            p.SetException(std::current_exception());
+        }
+    });
+
+    return future;
+}
+
+TFuture<uint64_t> ObSession::ExecuteModify(QueryId queryId, const Params& params) {
+    TPromise<uint64_t> promise;
+    auto future = promise.GetFuture();
+
+    executor_->Submit([this, queryId, params, p = std::move(promise)]() mutable {
+        try {
+            CheckShutdown();
+            EnsureTxn(*conn_, inTxn_);
+            p.SetValue(conn_->Execute(queryId, params));
+        } catch (...) {
+            ResetTxnOnError(conn_.get(), inTxn_);
+            p.SetException(std::current_exception());
+        }
+    });
+
+    return future;
+}
+
 TFuture<QueryResult> ObSession::ExecuteQuery(std::string_view sql, const Params& params) {
     TPromise<QueryResult> promise;
     auto future = promise.GetFuture();

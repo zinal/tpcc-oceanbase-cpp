@@ -79,6 +79,10 @@ set(TPCC_SOURCES
     src/db/errors.h
     src/db/connection.h
     src/db/connection.cpp
+    src/db/queries.h
+    src/db/queries.cpp
+    src/db/prepared_statement.h
+    src/db/prepared_statement.cpp
     src/db/session.h
     src/db/session.cpp
     src/db/connection_pool.h
@@ -263,6 +267,8 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
             src/ut/ob_transaction_ut.cpp
             src/ut/ob_check_ut.cpp
             src/db/connection.cpp
+            src/db/queries.cpp
+            src/db/prepared_statement.cpp
             src/db/session.cpp
             src/db/connection_pool.cpp
             src/init.cpp

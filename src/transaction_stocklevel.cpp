@@ -2,6 +2,7 @@
 #include "coro_traits.h"
 
 #include "constants.h"
+#include "db/queries.h"
 #include "log.h"
 #include "util.h"
 
@@ -29,7 +30,7 @@ TFuture<bool> GetStockLevelTask(
 
     // Get next order ID from district
     auto distFuture = session.ExecuteQuery(
-        "SELECT d_next_o_id FROM district WHERE d_w_id = ? AND d_id = ?",
+        QueryId::StockLevelSelectDistrict,
         MakeParams(warehouseID, districtID));
     auto distResult = co_await TSuspendWithFuture(std::move(distFuture), context.TaskQueue, context.TerminalID);
 
@@ -42,12 +43,7 @@ TFuture<bool> GetStockLevelTask(
 
     // Get stock count below threshold for recent orders
     auto stockFuture = session.ExecuteQuery(
-        "SELECT COUNT(DISTINCT s.s_i_id) AS stock_count "
-        "FROM order_line AS ol "
-        "INNER JOIN stock AS s ON s.s_i_id = ol.ol_i_id "
-        "WHERE ol.ol_w_id = ? AND ol.ol_d_id = ? "
-        "AND ol.ol_o_id < ? AND ol.ol_o_id >= ? "
-        "AND s.s_w_id = ? AND s.s_quantity < ?",
+        QueryId::StockLevelCountStock,
         MakeParams(warehouseID, districtID, nextOrderID, nextOrderID - 20,
                      warehouseID, threshold));
     auto stockResult = co_await TSuspendWithFuture(std::move(stockFuture), context.TaskQueue, context.TerminalID);

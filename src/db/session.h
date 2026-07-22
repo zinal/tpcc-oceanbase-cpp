@@ -3,6 +3,7 @@
 // Session API for OceanBase Connector/C (async via IExecutor).
 
 #include "db/params.h"
+#include "db/queries.h"
 #include "db/query_result.h"
 #include "future.h"
 #include "thread_pool.h"
@@ -38,6 +39,10 @@ public:
     ~ObSession();
 
     // Lazily begins REPEATABLE READ transaction on first call.
+    TFuture<QueryResult> ExecuteQuery(QueryId queryId, const Params& params = {});
+    TFuture<uint64_t> ExecuteModify(QueryId queryId, const Params& params = {});
+
+    // Fallback for dynamic DDL/import SQL.
     TFuture<QueryResult> ExecuteQuery(std::string_view sql, const Params& params = {});
     TFuture<uint64_t> ExecuteModify(std::string_view sql, const Params& params = {});
     TFuture<void> Commit();

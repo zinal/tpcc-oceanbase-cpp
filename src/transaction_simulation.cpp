@@ -2,6 +2,7 @@
 #include "coro_traits.h"
 
 #include "constants.h"
+#include "db/queries.h"
 #include "log.h"
 #include "util.h"
 
@@ -33,7 +34,7 @@ TFuture<bool> GetSimulationTask(
 
     for (int i = 0; i < context.SimulateTransactionSelect1; ++i) {
         auto result = co_await TSuspendWithFuture(
-            session.ExecuteQuery("SELECT CAST(? AS SIGNED) AS v", MakeParams(1)),
+            session.ExecuteQuery(QueryId::SimulationSelectCastInt, MakeParams(1)),
             context.TaskQueue, context.TerminalID);
         LOG_T("Terminal {} select1 iteration {}", context.TerminalID, i);
     }

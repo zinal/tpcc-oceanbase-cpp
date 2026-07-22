@@ -1,6 +1,7 @@
 #pragma once
 
 #include "db/params.h"
+#include "db/queries.h"
 #include "db/query_result.h"
 
 #include <memory>
@@ -46,8 +47,17 @@ struct ObConnection {
     void Commit();
     void Rollback();
 
+    // Prepared statement path for TPC-C transactional queries.
+    QueryResult Query(QueryId queryId, const Params& params = {});
+    uint64_t Execute(QueryId queryId, const Params& params = {});
+
+    // Fallback for dynamic DDL/import SQL (client-side ? substitution).
     QueryResult Query(const std::string& sql, const Params& params = {});
     uint64_t Execute(const std::string& sql, const Params& params = {});
+
+    // Reconnect and rebuild prepared statement cache.
+    void Reconnect(const ObConnectionConfig& config, bool selectDatabase = true);
+
     QueryResult QuerySimple(const std::string& sql);
     uint64_t ExecuteSimple(const std::string& sql);
 
@@ -58,6 +68,8 @@ struct ObConnection {
     bool Ok() const;
 
 private:
+    void EstablishConnection(const ObConnectionConfig& config, bool selectDatabase);
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

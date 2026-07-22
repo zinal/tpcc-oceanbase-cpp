@@ -3,6 +3,7 @@
 
 #include "common_queries.h"
 #include "constants.h"
+#include "db/queries.h"
 #include "log.h"
 #include "util.h"
 
@@ -32,8 +33,7 @@ TFuture<bool> GetPaymentTask(
 
     // Update warehouse YTD (SELECT FOR UPDATE + UPDATE; no RETURNING on OceanBase)
     auto whFuture = session.ExecuteQuery(
-        "SELECT w_name, w_street_1, w_street_2, w_city, w_state, w_zip "
-        "FROM warehouse WHERE w_id = ? FOR UPDATE",
+        QueryId::PaymentSelectWarehouseForUpdate,
         MakeParams(warehouseID));
     auto whResult = co_await TSuspendWithFuture(std::move(whFuture), context.TaskQueue, context.TerminalID);
 
@@ -46,14 +46,13 @@ TFuture<bool> GetPaymentTask(
 
     co_await TSuspendWithFuture(
         session.ExecuteModify(
-            "UPDATE warehouse SET w_ytd = w_ytd + ? WHERE w_id = ?",
+            QueryId::PaymentUpdateWarehouseYtd,
             MakeParams(paymentAmount, warehouseID)),
         context.TaskQueue, context.TerminalID);
 
     // Update district YTD
     auto distFuture = session.ExecuteQuery(
-        "SELECT d_name, d_street_1, d_street_2, d_city, d_state, d_zip "
-        "FROM district WHERE d_w_id = ? AND d_id = ? FOR UPDATE",
+        QueryId::PaymentSelectDistrictForUpdate,
         MakeParams(warehouseID, districtID));
     auto distResult = co_await TSuspendWithFuture(std::move(distFuture), context.TaskQueue, context.TerminalID);
 
@@ -66,7 +65,7 @@ TFuture<bool> GetPaymentTask(
 
     co_await TSuspendWithFuture(
         session.ExecuteModify(
-            "UPDATE district SET d_ytd = d_ytd + ? WHERE d_w_id = ? AND d_id = ?",
+            QueryId::PaymentUpdateDistrictYtd,
             MakeParams(paymentAmount, warehouseID, districtID)),
         context.TaskQueue, context.TerminalID);
 
@@ -127,7 +126,7 @@ TFuture<bool> GetPaymentTask(
     if (customer.c_credit == "BC") {
         // Bad credit: get and update C_DATA
         auto cDataFuture = session.ExecuteQuery(
-            "SELECT c_data FROM customer WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
+            QueryId::PaymentSelectCustomerData,
             MakeParams(customerWarehouseID, customerDistrictID, customer.c_id));
         auto cDataResult = co_await TSuspendWithFuture(std::move(cDataFuture), context.TaskQueue, context.TerminalID);
 
@@ -144,17 +143,13 @@ TFuture<bool> GetPaymentTask(
         }
 
         auto updFuture = session.ExecuteModify(
-            "UPDATE customer SET c_balance = c_balance - ?, c_ytd_payment = c_ytd_payment + ?, "
-            "c_payment_cnt = c_payment_cnt + 1, c_data = ? "
-            "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
+            QueryId::PaymentUpdateCustomerBc,
             MakeParams(paymentAmount, paymentAmount, newData,
                          customerWarehouseID, customerDistrictID, customer.c_id));
         co_await TSuspendWithFuture(std::move(updFuture), context.TaskQueue, context.TerminalID);
     } else {
         auto updFuture = session.ExecuteModify(
-            "UPDATE customer SET c_balance = c_balance - ?, c_ytd_payment = c_ytd_payment + ?, "
-            "c_payment_cnt = c_payment_cnt + 1 "
-            "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
+            QueryId::PaymentUpdateCustomer,
             MakeParams(paymentAmount, paymentAmount,
                          customerWarehouseID, customerDistrictID, customer.c_id));
         co_await TSuspendWithFuture(std::move(updFuture), context.TaskQueue, context.TerminalID);
@@ -167,8 +162,7 @@ TFuture<bool> GetPaymentTask(
     }
 
     auto histFuture = session.ExecuteModify(
-        "INSERT INTO history (h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id, h_date, h_amount, h_data) "
-        "VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)",
+        QueryId::PaymentInsertHistory,
         MakeParams(customer.c_id, customerDistrictID, customerWarehouseID,
                      districtID, warehouseID, paymentAmount, historyData));
     co_await TSuspendWithFuture(std::move(histFuture), context.TaskQueue, context.TerminalID);

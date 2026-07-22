@@ -1,5 +1,6 @@
 #include "db/connection.h"
 #include "db/errors.h"
+#include "db/prepared_statement.h"
 
 #include <mysql.h>
 
@@ -137,10 +138,30 @@ std::string BindSql(MYSQL* mysql, const std::string& sql, const Params& params) 
     return out;
 }
 
+void SetSessionRepeatableRead(MYSQL* mysql) {
+    if (mysql_query(mysql, "SET SESSION TRANSACTION ISOLATION LEVEL REPEATABLE READ") != 0) {
+        ThrowMysqlError(mysql, "SET SESSION TRANSACTION ISOLATION LEVEL failed");
+    }
+}
+
 } // namespace
 
 struct ObConnection::Impl {
     MYSQL* mysql = nullptr;
+    ObConnectionConfig config;
+    bool selectDatabase = true;
+    std::unique_ptr<ObStatementCache> stmtCache;
+
+    void InitStatementCache() {
+        stmtCache = std::make_unique<ObStatementCache>(mysql);
+    }
+
+    void ClearStatementCache() {
+        if (stmtCache) {
+            stmtCache->Clear();
+            stmtCache.reset();
+        }
+    }
 };
 
 ObConnectionConfig ParseConnectionString(const std::string& connection) {
@@ -186,25 +207,20 @@ std::string QuoteIdent(const std::string& ident) {
     return "`" + ident + "`";
 }
 
-std::unique_ptr<ObConnection> ObConnection::Connect(const ObConnectionConfig& config,
-                                                    bool selectDatabase) {
-    auto conn = std::unique_ptr<ObConnection>(new ObConnection());
-    conn->impl_ = std::make_unique<Impl>();
-    conn->impl_->mysql = mysql_init(nullptr);
-    if (!conn->impl_->mysql) {
+void ObConnection::EstablishConnection(const ObConnectionConfig& config, bool selectDatabase) {
+    impl_->mysql = mysql_init(nullptr);
+    if (!impl_->mysql) {
         throw std::runtime_error("mysql_init failed");
     }
 
-    // OceanBase CE local/dev typically does not use TLS on 2881.
     const int sslEnforce = 0;
-    mysql_options(conn->impl_->mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce);
+    mysql_options(impl_->mysql, MYSQL_OPT_SSL_ENFORCE, &sslEnforce);
 
-    // Prefer --path database when set; otherwise connection database.
     const std::string selectedDb = selectDatabase ? EffectiveDatabase(config) : std::string{};
     const char* initialDb = selectedDb.empty() ? nullptr : selectedDb.c_str();
 
     if (!mysql_real_connect(
-            conn->impl_->mysql,
+            impl_->mysql,
             config.host.c_str(),
             config.user.c_str(),
             config.password.c_str(),
@@ -213,17 +229,40 @@ std::unique_ptr<ObConnection> ObConnection::Connect(const ObConnectionConfig& co
             nullptr,
             CLIENT_MULTI_STATEMENTS | CLIENT_FOUND_ROWS))
     {
-        ThrowMysqlError(conn->impl_->mysql, "mysql_real_connect failed");
+        ThrowMysqlError(impl_->mysql, "mysql_real_connect failed");
     }
 
+    SetSessionRepeatableRead(impl_->mysql);
+    impl_->config = config;
+    impl_->selectDatabase = selectDatabase;
+    impl_->InitStatementCache();
+}
+
+std::unique_ptr<ObConnection> ObConnection::Connect(const ObConnectionConfig& config,
+                                                    bool selectDatabase) {
+    auto conn = std::unique_ptr<ObConnection>(new ObConnection());
+    conn->impl_ = std::make_unique<Impl>();
+    conn->EstablishConnection(config, selectDatabase);
     return conn;
 }
 
 ObConnection::~ObConnection() {
-    if (impl_ && impl_->mysql) {
+    if (impl_) {
+        impl_->ClearStatementCache();
+        if (impl_->mysql) {
+            mysql_close(impl_->mysql);
+            impl_->mysql = nullptr;
+        }
+    }
+}
+
+void ObConnection::Reconnect(const ObConnectionConfig& config, bool selectDatabase) {
+    impl_->ClearStatementCache();
+    if (impl_->mysql) {
         mysql_close(impl_->mysql);
         impl_->mysql = nullptr;
     }
+    EstablishConnection(config, selectDatabase);
 }
 
 void ObConnection::UseDatabase(const std::string& database) {
@@ -240,10 +279,7 @@ void ObConnection::CreateDatabaseIfNotExists(const std::string& database) {
 }
 
 void ObConnection::BeginRepeatableRead() {
-    // Two statements: portable across OceanBase MySQL tenants and MySQL/MariaDB.
-    if (mysql_query(impl_->mysql, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ") != 0) {
-        ThrowMysqlError(impl_->mysql, "SET TRANSACTION ISOLATION LEVEL failed");
-    }
+    // Session isolation is set once at connect; each transaction only needs START.
     if (mysql_query(impl_->mysql, "START TRANSACTION") != 0) {
         ThrowMysqlError(impl_->mysql, "START TRANSACTION failed");
     }
@@ -262,6 +298,14 @@ void ObConnection::Rollback() {
     if (mysql_query(impl_->mysql, "ROLLBACK") != 0) {
         // Best-effort during shutdown / already-closed txn.
     }
+}
+
+QueryResult ObConnection::Query(QueryId queryId, const Params& params) {
+    return impl_->stmtCache->Query(queryId, params);
+}
+
+uint64_t ObConnection::Execute(QueryId queryId, const Params& params) {
+    return impl_->stmtCache->Execute(queryId, params);
 }
 
 QueryResult ObConnection::Query(const std::string& sql, const Params& params) {

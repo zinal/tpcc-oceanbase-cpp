@@ -2,6 +2,7 @@
 #include "coro_traits.h"
 
 #include "constants.h"
+#include "db/queries.h"
 #include "log.h"
 #include "util.h"
 
@@ -45,10 +46,7 @@ TFuture<bool> GetDeliveryTask(
     for (int districtID = DISTRICT_LOW_ID; districtID <= DISTRICT_HIGH_ID; ++districtID) {
         // Get oldest new order (FOR UPDATE avoids concurrent delivery double-credit).
         auto noFuture = session.ExecuteQuery(
-            "SELECT no_o_id FROM new_order "
-            "WHERE no_d_id = ? AND no_w_id = ? "
-            "ORDER BY no_o_id ASC LIMIT 1 "
-            "FOR UPDATE",
+            QueryId::DeliverySelectNewOrderForUpdate,
             MakeParams(districtID, warehouseID));
         auto noResult = co_await TSuspendWithFuture(std::move(noFuture), context.TaskQueue, context.TerminalID);
 
@@ -62,7 +60,7 @@ TFuture<bool> GetDeliveryTask(
 
         // Get customer ID from order
         auto cidFuture = session.ExecuteQuery(
-            "SELECT o_c_id FROM oorder WHERE o_w_id = ? AND o_d_id = ? AND o_id = ?",
+            QueryId::DeliverySelectOrderCustomer,
             MakeParams(warehouseID, districtID, order.OrderID));
         auto cidResult = co_await TSuspendWithFuture(std::move(cidFuture), context.TaskQueue, context.TerminalID);
 
@@ -75,8 +73,7 @@ TFuture<bool> GetDeliveryTask(
 
         // Get order lines
         auto olFuture = session.ExecuteQuery(
-            "SELECT ol_number, ol_amount FROM order_line "
-            "WHERE ol_w_id = ? AND ol_d_id = ? AND ol_o_id = ?",
+            QueryId::DeliverySelectOrderLines,
             MakeParams(warehouseID, districtID, order.OrderID));
         auto olResult = co_await TSuspendWithFuture(std::move(olFuture), context.TaskQueue, context.TerminalID);
 
@@ -99,27 +96,25 @@ TFuture<bool> GetDeliveryTask(
 
         // Delete new order
         auto delFuture = session.ExecuteModify(
-            "DELETE FROM new_order WHERE no_w_id = ? AND no_d_id = ? AND no_o_id = ?",
+            QueryId::DeliveryDeleteNewOrder,
             MakeParams(warehouseID, districtID, order.OrderID));
         co_await TSuspendWithFuture(std::move(delFuture), context.TaskQueue, context.TerminalID);
 
         // Update carrier ID
         auto updFuture = session.ExecuteModify(
-            "UPDATE oorder SET o_carrier_id = ? WHERE o_w_id = ? AND o_d_id = ? AND o_id = ?",
+            QueryId::DeliveryUpdateCarrier,
             MakeParams(carrierID, warehouseID, districtID, order.OrderID));
         co_await TSuspendWithFuture(std::move(updFuture), context.TaskQueue, context.TerminalID);
 
         // Update delivery date on order lines
         auto updOlFuture = session.ExecuteModify(
-            "UPDATE order_line SET ol_delivery_d = CURRENT_TIMESTAMP "
-            "WHERE ol_w_id = ? AND ol_d_id = ? AND ol_o_id = ?",
+            QueryId::DeliveryUpdateOrderLineDelivery,
             MakeParams(warehouseID, districtID, order.OrderID));
         co_await TSuspendWithFuture(std::move(updOlFuture), context.TaskQueue, context.TerminalID);
 
         // Update customer balance and delivery count
         auto updCustFuture = session.ExecuteModify(
-            "UPDATE customer SET c_balance = c_balance + ?, c_delivery_cnt = c_delivery_cnt + 1 "
-            "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?",
+            QueryId::DeliveryUpdateCustomerBalance,
             MakeParams(order.TotalAmount, warehouseID, districtID, order.CustomerId));
         co_await TSuspendWithFuture(std::move(updCustFuture), context.TaskQueue, context.TerminalID);
     }
