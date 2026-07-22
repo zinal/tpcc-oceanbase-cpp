@@ -1,10 +1,13 @@
 #include "runner.h"
 
 #include "constants.h"
+#include "db/connection.h"
+#include "db/connection_pool.h"
 #include "log.h"
 #include "log_backend.h"
 #include "db/connection_pool.h"
 #include "runner_display_data.h"
+#include "schema_info.h"
 #include "task_queue.h"
 #include "terminal.h"
 #include "transactions.h"
@@ -157,7 +160,8 @@ void PrintConsoleStats(
 void PrintFinalResults(
     const TRunConfig& config,
     const std::vector<std::shared_ptr<TTerminalStats>>& perThreadStats,
-    std::chrono::duration<double> measureElapsed)
+    std::chrono::duration<double> measureElapsed,
+    const TBenchmarkSchemaInfo& schemaInfo)
 {
     TTerminalStats aggregated(config.HighResHistogram);
     size_t totalFailed = 0;
@@ -177,6 +181,13 @@ void PrintFinalResults(
 
     LOG_I("=== TPC-C Results ===");
     LOG_I("  Scale: {} warehouses", config.WarehouseCount);
+    if (schemaInfo.ForeignKeysEnabled.has_value()) {
+        LOG_I("  Foreign keys: {}",
+              ForeignKeysModeLabel(*schemaInfo.ForeignKeysEnabled));
+    }
+    if (schemaInfo.PartitionCount.has_value()) {
+        LOG_I("  HASH partitions: {}", *schemaInfo.PartitionCount);
+    }
     LOG_I("  Measured Duration: {:.1f}s (configured: {}s)",
           measureDuration, config.RunDuration.count());
     LOG_I("  New-Order Throughput: {:.2f} tpmC", tpmc);
@@ -271,10 +282,21 @@ void RunSync(const TRunConfig& config) {
           warehouseCount, terminalCount, threadCount,
           needsConnections ? poolSize : 0, maxInflight);
 
+    TBenchmarkSchemaInfo schemaInfo;
     std::unique_ptr<ObConnectionPool> connectionPool;
     if (needsConnections) {
         connectionPool = std::make_unique<ObConnectionPool>(
             config.ConnectionString, poolSize, ioThreads, config.Path);
+
+        auto cfg = ParseConnectionString(config.ConnectionString);
+        if (!config.Path.empty()) {
+            cfg.path = config.Path;
+        }
+        const std::string db = EffectiveDatabase(cfg);
+        if (!db.empty()) {
+            auto probeConn = ObConnection::Connect(cfg);
+            schemaInfo = QueryBenchmarkSchemaInfo(*probeConn, db);
+        }
     }
 
     auto taskQueue = CreateTaskQueue(threadCount, maxInflight, terminalCount, terminalCount);
@@ -455,7 +477,7 @@ void RunSync(const TRunConfig& config) {
     taskQueue->WakeupAndNeverSleep();
     taskQueue->Join();
 
-    PrintFinalResults(config, perThreadStats, measureElapsed);
+    PrintFinalResults(config, perThreadStats, measureElapsed, schemaInfo);
 
     connectionPool.reset();
 }

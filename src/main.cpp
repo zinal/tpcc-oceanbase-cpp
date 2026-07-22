@@ -4,6 +4,7 @@
 #include "clean.h"
 #include "check.h"
 #include "path_checker.h"
+#include "schema_info.h"
 #include "log.h"
 #include "util.h"
 
@@ -23,7 +24,10 @@ DEFINE_string(path, "",
 DEFINE_int32(warehouses, 1, "Number of warehouses");
 DEFINE_int32(partitions, 0,
     "HASH partition count for OceanBase multi-node layout "
-    "(0 = auto on OceanBase, -1 = disable, N > 0 = explicit count)");
+    "(0 = auto: warehouse count on OceanBase, -1 = disable, N > 0 = explicit count)");
+DEFINE_string(foreign_keys, "",
+    "Create FOREIGN KEY constraints during init: on|off "
+    "(default: on for init, off for performance-run)");
 DEFINE_int32(warmup, 0, "Warmup duration in minutes (0 = adaptive)");
 DEFINE_bool(skip_warmup, false, "Skip warmup entirely and start measurement immediately");
 DEFINE_int32(duration, 10, "Benchmark run duration in minutes");
@@ -51,6 +55,7 @@ void PrintHelp() {
         "  init      Create TPC-C schema (tables)\n"
         "  import    Load TPC-C data into the database\n"
         "  run       Run the TPC-C benchmark\n"
+        "  performance-run  Full benchmark pipeline (init→import→check→run→check)\n"
         "  clean     Drop TPC-C tables (and --path database if set)\n"
         "  check     Run TPC-C consistency checks\n"
         "\n"
@@ -60,7 +65,9 @@ void PrintHelp() {
         "  -p, --path            Benchmark database name (CREATE/USE; optional override)\n"
         "  -w, --warehouses      Number of warehouses (default: 1)\n"
         "  --partitions          HASH partitions for OceanBase cluster "
-        "(0=auto, -1=off, N>0=explicit; default: 0)\n"
+        "(0=auto by warehouses, -1=off, N>0=explicit; default: 0)\n"
+        "  --foreign-keys        FOREIGN KEY constraints for init "
+        "(on|off; default: on for init, off for performance-run)\n"
         "  --warmup              Warmup duration in minutes, 0 = adaptive (default: 0)\n"
         "  --skip-warmup         Skip warmup entirely (default: false)\n"
         "  --duration            Benchmark run duration in minutes (default: 10)\n"
@@ -80,10 +87,12 @@ void PrintHelp() {
         "\n"
         "Examples:\n"
         "  tpcc init --connection=\"host=127.0.0.1;port=2881;user=root@test;password=tpcc;database=tpcc\"\n"
+        "  tpcc init --foreign-keys=off --partitions=4 -w 4\n"
         "  tpcc import -w 10 --no-tui\n"
         "  tpcc check --after-import -w 10\n"
         "  tpcc clean -p tpcc_bench\n"
         "  tpcc run --simulate-select1=5 --duration=1 --no-tui\n"
+        "  tpcc performance-run -w 1 --duration-seconds=30 --no-tui\n"
         "  tpcc check -w 10\n";
 }
 
@@ -97,7 +106,8 @@ spdlog::level::level_enum ParseLogLevel(const std::string& level) {
 }
 
 bool IsValidCommand(const std::string& cmd) {
-    return cmd == "init" || cmd == "import" || cmd == "run" || cmd == "clean" || cmd == "check";
+    return cmd == "init" || cmd == "import" || cmd == "run" || cmd == "clean"
+        || cmd == "check" || cmd == "performance-run";
 }
 
 // Maps a short flag character to its long-form gflags name (using
@@ -178,12 +188,18 @@ std::string PreprocessArgs(
     return subcommand;
 }
 
-void RunInit() {
-    NTPCC::CheckDbForInit(FLAGS_connection, FLAGS_path);
+NTPCC::TInitOptions MakeInitOptions(bool defaultForeignKeys) {
     NTPCC::TInitOptions options;
     options.PartitionCount = FLAGS_partitions;
     options.WarehouseCount = FLAGS_warehouses;
-    NTPCC::InitSync(FLAGS_connection, FLAGS_path, options);
+    options.EnableForeignKeys =
+        NTPCC::ResolveForeignKeysFlag(FLAGS_foreign_keys, defaultForeignKeys);
+    return options;
+}
+
+void RunInit(bool defaultForeignKeys) {
+    NTPCC::CheckDbForInit(FLAGS_connection, FLAGS_path);
+    NTPCC::InitSync(FLAGS_connection, FLAGS_path, MakeInitOptions(defaultForeignKeys));
 }
 
 void RunImport() {
@@ -231,6 +247,22 @@ void RunCheck() {
     NTPCC::CheckSync(FLAGS_connection, FLAGS_warehouses, FLAGS_after_import, FLAGS_path);
 }
 
+void RunPerformanceRun() {
+    const bool foreignKeys = NTPCC::ResolveForeignKeysFlag(FLAGS_foreign_keys, false);
+    LOG_I("Performance run: foreign keys={}, TPC-C checks before and after benchmark",
+          NTPCC::ForeignKeysModeLabel(foreignKeys));
+
+    RunInit(/*defaultForeignKeys=*/false);
+    RunImport();
+
+    FLAGS_after_import = true;
+    RunCheck();
+    FLAGS_after_import = false;
+
+    RunBenchmark();
+    RunCheck();
+}
+
 } // anonymous
 
 int main(int argc, char* argv[]) {
@@ -254,7 +286,7 @@ int main(int argc, char* argv[]) {
 
     if (!IsValidCommand(command)) {
         std::cerr << "Unknown command: " << command << "\n";
-        std::cerr << "Valid commands: init, import, run, clean, check\n";
+        std::cerr << "Valid commands: init, import, run, performance-run, clean, check\n";
         return 1;
     }
 
@@ -267,7 +299,7 @@ int main(int argc, char* argv[]) {
     try {
         if (command == "init") {
             LOG_I("Initializing TPC-C schema...");
-            RunInit();
+            RunInit(/*defaultForeignKeys=*/true);
             LOG_I("Schema initialization complete");
         } else if (command == "import") {
             LOG_I("Importing TPC-C data ({} warehouses)...", FLAGS_warehouses);
@@ -276,6 +308,9 @@ int main(int argc, char* argv[]) {
         } else if (command == "run") {
             LOG_I("Running TPC-C benchmark...");
             RunBenchmark();
+        } else if (command == "performance-run") {
+            LOG_I("Running TPC-C performance pipeline...");
+            RunPerformanceRun();
         } else if (command == "clean") {
             LOG_I("Cleaning TPC-C tables...");
             RunClean();
