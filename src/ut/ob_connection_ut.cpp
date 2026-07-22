@@ -28,6 +28,23 @@ bool CanConnect() {
     }
 }
 
+std::string QuerySessionIsolation(NTPCC::ObConnection& conn) {
+    static constexpr const char* kQueries[] = {
+        "SELECT @@session.transaction_isolation AS v",
+        "SELECT @@tx_isolation AS v",
+    };
+    for (const char* sql : kQueries) {
+        try {
+            auto result = conn.QuerySimple(sql);
+            if (result.TryNextRow()) {
+                return result.GetString("v");
+            }
+        } catch (...) {
+        }
+    }
+    throw std::runtime_error("could not query session isolation level");
+}
+
 } // namespace
 
 TEST(ObConnectionTest, ParseConnectionString) {
@@ -78,9 +95,8 @@ TEST(ObConnectionTest, SessionIsolationSurvivesCommit) {
     ASSERT_TRUE(result.TryNextRow());
     conn->Commit();
 
-    auto iso = conn->QuerySimple("SELECT @@session.transaction_isolation AS v");
-    ASSERT_TRUE(iso.TryNextRow());
-    EXPECT_EQ(iso.GetString("v"), "REPEATABLE-READ");
+    auto iso = QuerySessionIsolation(*conn);
+    EXPECT_EQ(iso, "REPEATABLE-READ");
 }
 
 TEST(ObSessionTest, ExecuteQueryViaPool) {
