@@ -254,7 +254,7 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     o_entry_d    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (o_w_id, o_d_id, o_id),
     FOREIGN KEY (o_w_id, o_d_id, o_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,
-    CONSRAINT idx_order UNIQUE (o_w_id, o_d_id, o_c_id, o_id)
+    CONSTRAINT idx_order UNIQUE (o_w_id, o_d_id, o_c_id, o_id)
 ){})",
                     oWh),
         fmt::format(R"(CREATE TABLE new_order (
