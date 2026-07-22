@@ -9,6 +9,7 @@ namespace NTPCC {
 struct TInitOptions {
     int PartitionCount = 0;
     int WarehouseCount = 1;
+    bool EnableForeignKeys = true;
 };
 
 void InitSync(const std::string& connectionString, const std::string& path = {},

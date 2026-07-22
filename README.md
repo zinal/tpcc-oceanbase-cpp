@@ -17,6 +17,7 @@ Real-time TUI, coroutine-based terminals, CLI: `init` → `import` → `check` �
 | [docs/LIBOBCLIENT.md](docs/LIBOBCLIENT.md) | Build/install Connector/C |
 | [docs/SQL_DIALECT_GAPS.md](docs/SQL_DIALECT_GAPS.md) | SQL inventory |
 | [docs/IMPLEMENTATION_CHECKLIST.md](docs/IMPLEMENTATION_CHECKLIST.md) | Checklist |
+| [docs/PARTITION_TUNING.md](docs/PARTITION_TUNING.md) | HASH partitions & FK modes |
 | [docs/UPSTREAM.md](docs/UPSTREAM.md) | Upstream baseline commit |
 
 ## Target stack
@@ -209,6 +210,8 @@ Env defaults target OceanBase CE (`2881` / `root@test`). For MariaDB stand-in se
 | Terminals / warehouse | 10 | TPC-C |
 | `--max-inflight` | 100 | run |
 | Import loader threads | `min(warehouses, CPUs, 100)` | `--threads` |
+| `--foreign-keys` | on (`init`), off (`performance-run`) | FK constraints in DDL |
+| `--partitions` | 0 (auto = warehouse count on OceanBase) | See [docs/PARTITION_TUNING.md](docs/PARTITION_TUNING.md) |
 
 ## License
 

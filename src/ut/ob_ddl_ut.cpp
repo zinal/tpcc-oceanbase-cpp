@@ -39,6 +39,14 @@ bool TableExists(NTPCC::ObConnection& conn, const std::string& db, const std::st
     return result.TryNextRow();
 }
 
+bool ForeignKeysExist(NTPCC::ObConnection& conn, const std::string& db) {
+    auto result = conn.Query(
+        "SELECT 1 AS ok FROM information_schema.table_constraints "
+        "WHERE table_schema = ? AND constraint_type = 'FOREIGN KEY' LIMIT 1",
+        NTPCC::MakeParams(db));
+    return result.TryNextRow();
+}
+
 } // namespace
 
 TEST(ObDdlTest, InitAndCleanRoundTrip) {
@@ -87,4 +95,42 @@ TEST(ObDdlTest, InitAndCleanRoundTrip) {
             NTPCC::MakeParams(pathDb));
         EXPECT_FALSE(exists.TryNextRow());
     }
+}
+
+TEST(ObDdlTest, ForeignKeysConfigurable) {
+    if (!CanConnect()) {
+        GTEST_SKIP() << "DB not available (set TPCC_TEST_CONNECTION_ADMIN)";
+    }
+
+    const std::string connStr = AdminConnection();
+    const std::string pathDb = "tpcc_ddl_fk_ut";
+
+    try {
+        NTPCC::CleanSync(connStr, pathDb);
+    } catch (...) {
+    }
+
+    NTPCC::TInitOptions withFk;
+    withFk.EnableForeignKeys = true;
+    NTPCC::InitSync(connStr, pathDb, withFk);
+
+    {
+        auto cfg = NTPCC::ParseConnectionString(connStr);
+        cfg.path = pathDb;
+        auto conn = NTPCC::ObConnection::Connect(cfg);
+        EXPECT_TRUE(ForeignKeysExist(*conn, pathDb));
+    }
+
+    NTPCC::TInitOptions withoutFk;
+    withoutFk.EnableForeignKeys = false;
+    NTPCC::InitSync(connStr, pathDb, withoutFk);
+
+    {
+        auto cfg = NTPCC::ParseConnectionString(connStr);
+        cfg.path = pathDb;
+        auto conn = NTPCC::ObConnection::Connect(cfg);
+        EXPECT_FALSE(ForeignKeysExist(*conn, pathDb));
+    }
+
+    NTPCC::CleanSync(connStr, pathDb);
 }
