@@ -169,7 +169,7 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     s_w_id       int           NOT NULL,
     s_i_id       int           NOT NULL,
     s_quantity   int           NOT NULL,
-    s_ytd        decimal(8, 2) NOT NULL,
+    s_ytd        decimal(8, 0) NOT NULL,
     s_order_cnt  int           NOT NULL,
     s_remote_cnt int           NOT NULL,
     s_data       varchar(50)   NOT NULL,

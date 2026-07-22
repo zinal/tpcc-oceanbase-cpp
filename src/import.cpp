@@ -133,27 +133,27 @@ size_t EstimatePerWarehouseDataSize() {
 
 //-----------------------------------------------------------------------------
 
-std::string RandomStringBenchbase(int strLen, char baseChar = 'a') {
-    if (strLen > 1) {
-        int actualLength = strLen - 1;
-        std::string result;
-        result.reserve(actualLength);
-        for (int i = 0; i < actualLength; ++i) {
-            result += static_cast<char>(baseChar + RandomNumber(0, 25));
-        }
-        return result;
+// TPC-C §4.3.2.2: random a-string of the requested length (letters only here).
+std::string RandomString(int strLen, char baseChar = 'a') {
+    if (strLen <= 0) {
+        return "";
     }
-    return "";
+    std::string result;
+    result.reserve(strLen);
+    for (int i = 0; i < strLen; ++i) {
+        result += static_cast<char>(baseChar + RandomNumber(0, 25));
+    }
+    return result;
 }
 
 std::string RandomAlphaString(int minLength, int maxLength) {
     int length = static_cast<int>(RandomNumber(minLength, maxLength));
-    return RandomStringBenchbase(length, 'a');
+    return RandomString(length, 'a');
 }
 
 std::string RandomUpperAlphaString(int minLength, int maxLength) {
     int length = static_cast<int>(RandomNumber(minLength, maxLength));
-    return RandomStringBenchbase(length, 'A');
+    return RandomString(length, 'A');
 }
 
 std::string RandomNumericString(int length) {
@@ -201,11 +201,11 @@ void LoadItems(ObSession& session) {
                 int randPct = static_cast<int>(RandomNumber(1, 100));
                 int len = static_cast<int>(RandomNumber(26, 50));
                 if (randPct > 10) {
-                    data = RandomStringBenchbase(len);
+                    data = RandomString(len);
                 } else {
                     int startOrig = static_cast<int>(RandomNumber(2, len - 8));
-                    data = RandomStringBenchbase(startOrig) + "ORIGINAL" +
-                           RandomStringBenchbase(len - startOrig - 8);
+                    data = RandomString(startOrig) + "ORIGINAL" +
+                           RandomString(len - startOrig - 8);
                 }
 
                 emit(BulkRow{
@@ -237,8 +237,8 @@ void LoadWarehouses(ObSession& session, int startId, int lastId) {
                     Cell(RandomAlphaString(10, 20)),
                     Cell(RandomAlphaString(10, 20)),
                     Cell(RandomAlphaString(10, 20)),
-                    Cell(RandomUpperAlphaString(3, 3)),
-                    Cell(std::string("123456789")),
+                    Cell(RandomUpperAlphaString(2, 2)),
+                    Cell(RandomNumericString(4) + "11111"),
                 });
             }
         });
@@ -263,8 +263,8 @@ void LoadDistricts(ObSession& session, int startId, int lastId) {
                         Cell(RandomAlphaString(10, 20)),
                         Cell(RandomAlphaString(10, 20)),
                         Cell(RandomAlphaString(10, 20)),
-                        Cell(RandomUpperAlphaString(3, 3)),
-                        Cell(std::string("123456789")),
+                        Cell(RandomUpperAlphaString(2, 2)),
+                        Cell(RandomNumericString(4) + "11111"),
                     });
                 }
             }
@@ -284,11 +284,11 @@ void LoadStock(ObSession& session, int wh) {
                 int randPct = static_cast<int>(RandomNumber(1, 100));
                 int len = static_cast<int>(RandomNumber(26, 50));
                 if (randPct > 10) {
-                    data = RandomStringBenchbase(len);
+                    data = RandomString(len);
                 } else {
                     int startOrig = static_cast<int>(RandomNumber(2, len - 8));
-                    data = RandomStringBenchbase(startOrig) + "ORIGINAL" +
-                           RandomStringBenchbase(len - startOrig - 8);
+                    data = RandomString(startOrig) + "ORIGINAL" +
+                           RandomString(len - startOrig - 8);
                 }
 
                 emit(BulkRow{
@@ -299,16 +299,16 @@ void LoadStock(ObSession& session, int wh) {
                     Cell(0),
                     Cell(0),
                     Cell(data),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
-                    Cell(RandomStringBenchbase(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
+                    Cell(RandomString(24)),
                 });
             }
         });
@@ -339,7 +339,7 @@ void LoadCustomers(ObSession& session, int wh, int district) {
                     Cell(wh),
                     Cell(district),
                     Cell(cid),
-                    Cell(RandomNumber(1, 5000) / 10000.0),
+                    Cell(RandomNumber(0, 5000) / 10000.0),
                     Cell(credit),
                     Cell(last),
                     Cell(RandomAlphaString(8, 16)),
@@ -351,7 +351,7 @@ void LoadCustomers(ObSession& session, int wh, int district) {
                     Cell(RandomAlphaString(10, 20)),
                     Cell(RandomAlphaString(10, 20)),
                     Cell(RandomAlphaString(10, 20)),
-                    Cell(RandomUpperAlphaString(3, 3)),
+                    Cell(RandomUpperAlphaString(2, 2)),
                     Cell(RandomNumericString(4) + "11111"),
                     Cell(RandomNumericString(16)),
                     Cell(ts),
@@ -379,7 +379,7 @@ void LoadHistory(ObSession& session, int wh, int district) {
                     Cell(wh),
                     Cell(ts),
                     Cell(10.00),
-                    Cell(RandomAlphaString(10, 24)),
+                    Cell(RandomAlphaString(12, 24)),
                 });
             }
         });
@@ -460,7 +460,7 @@ void LoadOrders(ObSession& session, int wh, int district) {
                         Cell(amount),
                         Cell(wh),
                         Cell(5.0),
-                        Cell(RandomStringBenchbase(24)),
+                        Cell(RandomString(24)),
                     });
                 }
             }
