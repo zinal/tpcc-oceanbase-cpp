@@ -3,6 +3,7 @@
 
 #include "common_queries.h"
 #include "constants.h"
+#include "db/queries.h"
 #include "log.h"
 #include "util.h"
 
@@ -61,9 +62,7 @@ TFuture<bool> GetOrderStatusTask(
 
     // Get the newest order for this customer (uses idx_order when present)
     auto orderFuture = session.ExecuteQuery(
-        "SELECT o_id, o_carrier_id, o_entry_d FROM oorder "
-        "WHERE o_w_id = ? AND o_d_id = ? AND o_c_id = ? "
-        "ORDER BY o_id DESC LIMIT 1",
+        QueryId::OrderStatusSelectLatestOrder,
         MakeParams(warehouseID, districtID, customer.c_id));
     auto orderResult = co_await TSuspendWithFuture(std::move(orderFuture), context.TaskQueue, context.TerminalID);
 
@@ -79,8 +78,7 @@ TFuture<bool> GetOrderStatusTask(
 
     // Get order lines
     auto olFuture = session.ExecuteQuery(
-        "SELECT ol_i_id, ol_supply_w_id, ol_quantity, ol_amount, ol_delivery_d "
-        "FROM order_line WHERE ol_w_id = ? AND ol_d_id = ? AND ol_o_id = ?",
+        QueryId::OrderStatusSelectOrderLines,
         MakeParams(warehouseID, districtID, orderID));
     auto olResult = co_await TSuspendWithFuture(std::move(olFuture), context.TaskQueue, context.TerminalID);
 

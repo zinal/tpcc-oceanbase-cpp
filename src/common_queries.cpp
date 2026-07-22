@@ -1,6 +1,8 @@
 #include "common_queries.h"
 #include "log.h"
 
+#include "db/queries.h"
+
 #include <vector>
 
 namespace NTPCC {
@@ -36,22 +38,8 @@ TFuture<QueryResult> GetCustomerById(
     int customerID,
     bool forUpdate)
 {
-    static constexpr std::string_view sql =
-        "SELECT c_first, c_middle, c_last, c_street_1, c_street_2, "
-        "c_city, c_state, c_zip, c_phone, c_credit, c_credit_lim, "
-        "c_discount, c_balance, c_ytd_payment, c_payment_cnt, c_since "
-        "FROM customer "
-        "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ?";
-    static constexpr std::string_view sqlForUpdate =
-        "SELECT c_first, c_middle, c_last, c_street_1, c_street_2, "
-        "c_city, c_state, c_zip, c_phone, c_credit, c_credit_lim, "
-        "c_discount, c_balance, c_ytd_payment, c_payment_cnt, c_since "
-        "FROM customer "
-        "WHERE c_w_id = ? AND c_d_id = ? AND c_id = ? "
-        "FOR UPDATE";
-
     return session.ExecuteQuery(
-        forUpdate ? sqlForUpdate : sql,
+        forUpdate ? QueryId::CustomerSelectByIdForUpdate : QueryId::CustomerSelectById,
         MakeParams(warehouseID, districtID, customerID));
 }
 
@@ -64,24 +52,9 @@ TFuture<QueryResult> GetCustomersByLastName(
     const std::string& lastName,
     bool forUpdate)
 {
-    static constexpr std::string_view sql =
-        "SELECT c_first, c_middle, c_last, c_id, c_street_1, c_street_2, c_city, "
-        "c_state, c_zip, c_phone, c_credit, c_credit_lim, c_discount, "
-        "c_balance, c_ytd_payment, c_payment_cnt, c_since "
-        "FROM customer "
-        "WHERE c_w_id = ? AND c_d_id = ? AND c_last = ? "
-        "ORDER BY c_first";
-    static constexpr std::string_view sqlForUpdate =
-        "SELECT c_first, c_middle, c_last, c_id, c_street_1, c_street_2, c_city, "
-        "c_state, c_zip, c_phone, c_credit, c_credit_lim, c_discount, "
-        "c_balance, c_ytd_payment, c_payment_cnt, c_since "
-        "FROM customer "
-        "WHERE c_w_id = ? AND c_d_id = ? AND c_last = ? "
-        "ORDER BY c_first "
-        "FOR UPDATE";
-
     return session.ExecuteQuery(
-        forUpdate ? sqlForUpdate : sql,
+        forUpdate ? QueryId::CustomerSelectByLastNameForUpdate
+                  : QueryId::CustomerSelectByLastName,
         MakeParams(warehouseID, districtID, lastName));
 }
 

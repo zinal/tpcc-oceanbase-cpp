@@ -1,6 +1,7 @@
 #include "db/connection.h"
 #include "db/connection_pool.h"
 #include "db/params.h"
+#include "db/queries.h"
 #include "db/session.h"
 
 #include <gtest/gtest.h>
@@ -25,6 +26,23 @@ bool CanConnect() {
     } catch (...) {
         return false;
     }
+}
+
+std::string QuerySessionIsolation(NTPCC::ObConnection& conn) {
+    static constexpr const char* kQueries[] = {
+        "SELECT @@session.transaction_isolation AS v",
+        "SELECT @@tx_isolation AS v",
+    };
+    for (const char* sql : kQueries) {
+        try {
+            auto result = conn.QuerySimple(sql);
+            if (result.TryNextRow()) {
+                return result.GetString("v");
+            }
+        } catch (...) {
+        }
+    }
+    throw std::runtime_error("could not query session isolation level");
 }
 
 } // namespace
@@ -53,7 +71,7 @@ TEST(ObConnectionTest, SelectOneAndRepeatableRead) {
     auto conn = NTPCC::ObConnection::Connect(cfg);
 
     conn->BeginRepeatableRead();
-    auto result = conn->Query("SELECT CAST(? AS SIGNED) AS v", NTPCC::MakeParams(42));
+    auto result = conn->Query(NTPCC::QueryId::SimulationSelectCastInt, NTPCC::MakeParams(42));
     ASSERT_TRUE(result.TryNextRow());
     EXPECT_EQ(result.GetInt32("v"), 42);
 
@@ -62,6 +80,23 @@ TEST(ObConnectionTest, SelectOneAndRepeatableRead) {
     EXPECT_EQ(result2.GetString("s"), "hello");
 
     conn->Commit();
+}
+
+TEST(ObConnectionTest, SessionIsolationSurvivesCommit) {
+    if (!CanConnect()) {
+        GTEST_SKIP() << "OceanBase not available (set TPCC_TEST_CONNECTION)";
+    }
+
+    auto cfg = NTPCC::ParseConnectionString(TestConnectionString());
+    auto conn = NTPCC::ObConnection::Connect(cfg);
+
+    conn->BeginRepeatableRead();
+    auto result = conn->Query(NTPCC::QueryId::SimulationSelectCastInt, NTPCC::MakeParams(1));
+    ASSERT_TRUE(result.TryNextRow());
+    conn->Commit();
+
+    auto iso = QuerySessionIsolation(*conn);
+    EXPECT_EQ(iso, "REPEATABLE-READ");
 }
 
 TEST(ObSessionTest, ExecuteQueryViaPool) {

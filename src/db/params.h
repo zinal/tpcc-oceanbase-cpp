@@ -54,8 +54,22 @@ public:
         return *this;
     }
 
+    struct Timestamp {
+        int year = 0;
+        int month = 0;
+        int day = 0;
+        int hour = 0;
+        int minute = 0;
+        int second = 0;
+    };
+
+    Params& operator()(Timestamp v) {
+        values_.emplace_back(v);
+        return *this;
+    }
+
     struct Null {};
-    using Value = std::variant<Null, int32_t, int64_t, uint64_t, double, std::string>;
+    using Value = std::variant<Null, int32_t, int64_t, uint64_t, double, std::string, Timestamp>;
 
     const std::vector<Value>& Values() const { return values_; }
     size_t Size() const { return values_.size(); }
