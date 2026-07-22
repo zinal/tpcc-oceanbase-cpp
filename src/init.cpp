@@ -254,7 +254,7 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     o_entry_d    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (o_w_id, o_d_id, o_id),
     FOREIGN KEY (o_w_id, o_d_id, o_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,
-    UNIQUE (o_w_id, o_d_id, o_c_id, o_id)
+    CONSTRAINT idx_order UNIQUE (o_w_id, o_d_id, o_c_id, o_id)
 ){})",
                     oWh),
         fmt::format(R"(CREATE TABLE new_order (
@@ -346,10 +346,6 @@ void CreateIndexes(const std::string& connectionString, const std::string& path,
              fmt::format(
                  "CREATE INDEX {} ON customer (c_w_id, c_d_id, c_last, c_first){}",
                  INDEX_CUSTOMER_NAME, localSuffix)},
-            {INDEX_ORDER,
-             fmt::format(
-                 "CREATE INDEX {} ON oorder (o_w_id, o_d_id, o_c_id, o_id){}",
-                 INDEX_ORDER, localSuffix)},
         };
 
         for (const auto& [name, sql] : indexes) {
