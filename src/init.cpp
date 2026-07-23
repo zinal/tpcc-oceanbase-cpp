@@ -169,6 +169,7 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout,
               TABLEGROUP_TPCC, layout.PartitionCount)
         : std::string{};
 
+    const std::string historyDataSuffix = options.EnableForeignKeys ? "," : "";
     const std::string historyHistId = layout.UseClusterLayout
         ? "    hist_id INT          NOT NULL AUTO_INCREMENT,\n"
         : "";
@@ -267,9 +268,10 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout,
     h_w_id   int           NOT NULL,
     h_date   timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     h_amount decimal(6, 2) NOT NULL,
-    h_data   varchar(24)   NOT NULL,
-{}{}{}{})",
-                    historyHistId, fkHistoryCustomer, fkHistoryDistrict,
+    h_data   varchar(24)   NOT NULL{}
+{}{}{}
+){})",
+                    historyHistId, historyDataSuffix, fkHistoryCustomer, fkHistoryDistrict,
                     historyPkClause, hWh),
         fmt::format(R"(CREATE TABLE oorder (
     o_w_id       int       NOT NULL,
