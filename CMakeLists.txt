@@ -111,6 +111,8 @@ set(TPCC_SOURCES
     src/runner_display_data.h
     src/path_checker.h
     src/path_checker.cpp
+    src/schema_info.h
+    src/schema_info.cpp
     src/log_backend.h
     src/log_backend.cpp
     src/main.cpp
@@ -276,6 +278,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/googletest/CMakeLists.txt")
             src/import.cpp
             src/check.cpp
             src/path_checker.cpp
+            src/schema_info.cpp
             src/common_queries.cpp
             src/transaction_neworder.cpp
             src/transaction_delivery.cpp
