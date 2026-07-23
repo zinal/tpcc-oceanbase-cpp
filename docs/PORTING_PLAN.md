@@ -99,7 +99,7 @@ TFuture<void>        ExecuteBulk(const std::string& table,
 ### Фаза 1 — DB-адаптер на OceanBase Connector/C ✅
 
 1. [x] LibOBClient + `find_package(OBClient REQUIRED)` (без mysqlclient fallback).
-2. [x] `ObConnection` + `Params` + `QueryResult` (литеральная подстановка `?` через escape).
+2. [x] `ObConnection` + `Params` + `QueryResult` (prepared statements / `mysql_stmt_bind_param`).
 3. [x] `ObSession` + `ObConnectionPool` (`USE` для `--path`, `KILL QUERY` в `CancelAll`).
 4. [x] runner/terminal/transactions → `ObSession` / `MakeParams`.
 5. [x] Удалены `pg_session.*`, `pg_connection_pool.*`; `query_result.h` → `db/query_result.h`.
