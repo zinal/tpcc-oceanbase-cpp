@@ -141,7 +141,7 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout,
         ? "    FOREIGN KEY (h_c_w_id, h_c_d_id, h_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,\n"
         : "";
     const std::string fkHistoryDistrict = options.EnableForeignKeys
-        ? "    FOREIGN KEY (h_w_id, h_d_id) REFERENCES district (d_w_id, d_id) ON DELETE CASCADE,\n"
+        ? "    FOREIGN KEY (h_w_id, h_d_id) REFERENCES district (d_w_id, d_id) ON DELETE CASCADE"
         : "";
     const std::string fkOorder = options.EnableForeignKeys
         ? "    FOREIGN KEY (o_w_id, o_d_id, o_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,\n"
