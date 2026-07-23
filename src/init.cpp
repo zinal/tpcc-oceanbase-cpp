@@ -4,6 +4,7 @@
 #include "db/connection.h"
 #include "db/errors.h"
 #include "log.h"
+#include "schema_info.h"
 #include "util.h"
 
 #include <fmt/format.h>
@@ -31,7 +32,7 @@ const char* const kDropTables[] = {
 
 struct TSchemaLayout {
     bool UseClusterLayout = false;
-    int PartitionCount = MIN_AUTO_PARTITION_COUNT;
+    int PartitionCount = 1;
 };
 
 ObConnectionConfig ConfigWithPath(const std::string& connectionString, const std::string& path) {
@@ -94,7 +95,7 @@ int ResolvePartitionCount(const TInitOptions& options) {
     if (options.PartitionCount > 0) {
         return options.PartitionCount;
     }
-    return std::max(MIN_AUTO_PARTITION_COUNT, options.WarehouseCount);
+    return std::max(1, options.WarehouseCount);
 }
 
 TSchemaLayout ResolveSchemaLayout(ObConnection& conn, const TInitOptions& options) {
@@ -122,7 +123,39 @@ std::string ClusterTableSuffix(const TSchemaLayout& layout, const char* hashColu
         TABLEGROUP_TPCC, hashColumn, layout.PartitionCount);
 }
 
-std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
+std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout,
+                                                 const TInitOptions& options) {
+    const std::string fkStockWarehouse = options.EnableForeignKeys
+        ? "    FOREIGN KEY (s_w_id) REFERENCES warehouse (w_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkStockItem = options.EnableForeignKeys
+        ? "    FOREIGN KEY (s_i_id) REFERENCES item (i_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkDistrict = options.EnableForeignKeys
+        ? "    FOREIGN KEY (d_w_id) REFERENCES warehouse (w_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkCustomer = options.EnableForeignKeys
+        ? "    FOREIGN KEY (c_w_id, c_d_id) REFERENCES district (d_w_id, d_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkHistoryCustomer = options.EnableForeignKeys
+        ? "    FOREIGN KEY (h_c_w_id, h_c_d_id, h_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkHistoryDistrict = options.EnableForeignKeys
+        ? "    FOREIGN KEY (h_w_id, h_d_id) REFERENCES district (d_w_id, d_id) ON DELETE CASCADE"
+        : "";
+    const std::string fkOorder = options.EnableForeignKeys
+        ? "    FOREIGN KEY (o_w_id, o_d_id, o_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkNewOrder = options.EnableForeignKeys
+        ? "    FOREIGN KEY (no_w_id, no_d_id, no_o_id) REFERENCES oorder (o_w_id, o_d_id, o_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkOrderLineOorder = options.EnableForeignKeys
+        ? "    FOREIGN KEY (ol_w_id, ol_d_id, ol_o_id) REFERENCES oorder (o_w_id, o_d_id, o_id) ON DELETE CASCADE,\n"
+        : "";
+    const std::string fkOrderLineStock = options.EnableForeignKeys
+        ? "    FOREIGN KEY (ol_supply_w_id, ol_i_id) REFERENCES stock (s_w_id, s_i_id) ON DELETE CASCADE,\n"
+        : "";
+
     const std::string wh = ClusterTableSuffix(layout, "w_id");
     const std::string dWh = ClusterTableSuffix(layout, "d_w_id");
     const std::string cWh = ClusterTableSuffix(layout, "c_w_id");
@@ -136,6 +169,7 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
               TABLEGROUP_TPCC, layout.PartitionCount)
         : std::string{};
 
+    const std::string historyDataSuffix = options.EnableForeignKeys ? "," : "";
     const std::string historyHistId = layout.UseClusterLayout
         ? "    hist_id INT          NOT NULL AUTO_INCREMENT,\n"
         : "";
@@ -183,11 +217,9 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     s_dist_08    char(24)      NOT NULL,
     s_dist_09    char(24)      NOT NULL,
     s_dist_10    char(24)      NOT NULL,
-    FOREIGN KEY (s_w_id) REFERENCES warehouse (w_id) ON DELETE CASCADE,
-    FOREIGN KEY (s_i_id) REFERENCES item (i_id) ON DELETE CASCADE,
-    PRIMARY KEY (s_w_id, s_i_id)
+{}{}    PRIMARY KEY (s_w_id, s_i_id)
 ){})",
-                    sWh),
+                    fkStockWarehouse, fkStockItem, sWh),
         fmt::format(R"(CREATE TABLE district (
     d_w_id      int            NOT NULL,
     d_id        int            NOT NULL,
@@ -200,10 +232,9 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     d_city      varchar(20)    NOT NULL,
     d_state     char(2)        NOT NULL,
     d_zip       char(9)        NOT NULL,
-    FOREIGN KEY (d_w_id) REFERENCES warehouse (w_id) ON DELETE CASCADE,
-    PRIMARY KEY (d_w_id, d_id)
+{}    PRIMARY KEY (d_w_id, d_id)
 ){})",
-                    dWh),
+                    fkDistrict, dWh),
         fmt::format(R"(CREATE TABLE customer (
     c_w_id         int            NOT NULL,
     c_d_id         int            NOT NULL,
@@ -226,10 +257,9 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     c_since        timestamp      NOT NULL DEFAULT CURRENT_TIMESTAMP,
     c_middle       char(2)        NOT NULL,
     c_data         varchar(500)   NOT NULL,
-    FOREIGN KEY (c_w_id, c_d_id) REFERENCES district (d_w_id, d_id) ON DELETE CASCADE,
-    PRIMARY KEY (c_w_id, c_d_id, c_id)
+{}    PRIMARY KEY (c_w_id, c_d_id, c_id)
 ){})",
-                    cWh),
+                    fkCustomer, cWh),
         fmt::format(R"(CREATE TABLE history (
 {}    h_c_id   int           NOT NULL,
     h_c_d_id int           NOT NULL,
@@ -238,11 +268,11 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     h_w_id   int           NOT NULL,
     h_date   timestamp     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     h_amount decimal(6, 2) NOT NULL,
-    h_data   varchar(24)   NOT NULL,
-    FOREIGN KEY (h_c_w_id, h_c_d_id, h_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,
-    FOREIGN KEY (h_w_id, h_d_id) REFERENCES district (d_w_id, d_id) ON DELETE CASCADE{}
+    h_data   varchar(24)   NOT NULL{}
+{}{}{}
 ){})",
-                    historyHistId, historyPkClause, hWh),
+                    historyHistId, historyDataSuffix, fkHistoryCustomer, fkHistoryDistrict,
+                    historyPkClause, hWh),
         fmt::format(R"(CREATE TABLE oorder (
     o_w_id       int       NOT NULL,
     o_d_id       int       NOT NULL,
@@ -253,18 +283,17 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     o_all_local  int       NOT NULL,
     o_entry_d    timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (o_w_id, o_d_id, o_id),
-    FOREIGN KEY (o_w_id, o_d_id, o_c_id) REFERENCES customer (c_w_id, c_d_id, c_id) ON DELETE CASCADE,
+{}
     UNIQUE (o_w_id, o_d_id, o_c_id, o_id)
 ){})",
-                    oWh),
+                    fkOorder, oWh),
         fmt::format(R"(CREATE TABLE new_order (
     no_w_id int NOT NULL,
     no_d_id int NOT NULL,
     no_o_id int NOT NULL,
-    FOREIGN KEY (no_w_id, no_d_id, no_o_id) REFERENCES oorder (o_w_id, o_d_id, o_id) ON DELETE CASCADE,
-    PRIMARY KEY (no_w_id, no_d_id, no_o_id)
+{}    PRIMARY KEY (no_w_id, no_d_id, no_o_id)
 ){})",
-                    noWh),
+                    fkNewOrder, noWh),
         fmt::format(R"(CREATE TABLE order_line (
     ol_w_id        int           NOT NULL,
     ol_d_id        int           NOT NULL,
@@ -276,11 +305,9 @@ std::vector<std::string> BuildCreateStatements(const TSchemaLayout& layout) {
     ol_supply_w_id int           NOT NULL,
     ol_quantity    decimal(6, 2) NOT NULL,
     ol_dist_info   char(24)      NOT NULL,
-    FOREIGN KEY (ol_w_id, ol_d_id, ol_o_id) REFERENCES oorder (o_w_id, o_d_id, o_id) ON DELETE CASCADE,
-    FOREIGN KEY (ol_supply_w_id, ol_i_id) REFERENCES stock (s_w_id, s_i_id) ON DELETE CASCADE,
-    PRIMARY KEY (ol_w_id, ol_d_id, ol_o_id, ol_number)
+{}{}    PRIMARY KEY (ol_w_id, ol_d_id, ol_o_id, ol_number)
 ){})",
-                    olWh),
+                    fkOrderLineOorder, fkOrderLineStock, olWh),
     };
 }
 
@@ -307,9 +334,14 @@ void InitSync(const std::string& connectionString, const std::string& path,
         const TSchemaLayout layout = ResolveSchemaLayout(*conn, options);
 
         LOG_I("Using database '{}'", db);
+        LOG_I("Foreign keys: {}", ForeignKeysModeLabel(options.EnableForeignKeys));
         if (layout.UseClusterLayout) {
             LOG_I("OceanBase cluster layout: TABLEGROUP={}, HASH partitions={}",
                   TABLEGROUP_TPCC, layout.PartitionCount);
+            WarnPartitionTopology(
+                layout.PartitionCount,
+                options.WarehouseCount,
+                QueryTenantUnitCount(*conn));
         } else {
             LOG_I("Using non-partitioned schema (single-node / non-OceanBase target)");
         }
@@ -319,7 +351,7 @@ void InitSync(const std::string& connectionString, const std::string& path,
         ExecAll(*conn, drops);
 
         CreateTableGroup(*conn, layout);
-        ExecAll(*conn, BuildCreateStatements(layout));
+        ExecAll(*conn, BuildCreateStatements(layout, options));
 
         LOG_I("All TPC-C tables created successfully");
     } catch (const std::exception& e) {
