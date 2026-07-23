@@ -1,6 +1,6 @@
 #pragma once
 
-// Binding API for OceanBase Connector/C (placeholders: ?).
+// Bound-parameter API for OceanBase Connector/C prepared statements (placeholders: ?).
 
 #include <cstdint>
 #include <string>
