@@ -23,7 +23,6 @@
 #include <optional>
 #include <random>
 #include <sstream>
-#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -61,11 +60,9 @@ ObConnectionConfig MakeConfig(const TImportConfig& config) {
     return cfg;
 }
 
-void SetSessionQueryTimeout(ObSession& session, int64_t timeoutUs, std::string_view purpose) {
-    const int64_t timeoutSec = timeoutUs / 1'000'000;
+void SetSessionQueryTimeout(ObSession& session, int64_t timeoutUs) {
     try {
         session.ExecuteNonTx(fmt::format("SET SESSION ob_query_timeout = {}", timeoutUs)).Get();
-        LOG_I("Set ob_query_timeout to {}s for {}", timeoutSec, purpose);
     } catch (const std::exception& ex) {
         // MariaDB stand-in and other MySQL-compat servers may not have this variable.
         LOG_W("Could not set ob_query_timeout ({}); continuing with server default", ex.what());
@@ -81,7 +78,7 @@ int64_t ImportQueryTimeoutMicros() {
 ObSession OpenSession(const TImportConfig& config, InlineExecutor& executor) {
     auto conn = ObConnection::Connect(MakeConfig(config));
     ObSession session(std::move(conn), &executor);
-    SetSessionQueryTimeout(session, ImportQueryTimeoutMicros(), "TPC-C data import");
+    SetSessionQueryTimeout(session, ImportQueryTimeoutMicros());
     return session;
 }
 
@@ -503,7 +500,7 @@ int64_t AnalyzeQueryTimeoutMicros(size_t warehouseCount) {
 }
 
 void SetAnalyzeQueryTimeout(ObSession& session, size_t warehouseCount) {
-    SetSessionQueryTimeout(session, AnalyzeQueryTimeoutMicros(warehouseCount), "ANALYZE TABLE");
+    SetSessionQueryTimeout(session, AnalyzeQueryTimeoutMicros(warehouseCount));
 }
 
 void AnalyzeTables(const TImportConfig& config) {
