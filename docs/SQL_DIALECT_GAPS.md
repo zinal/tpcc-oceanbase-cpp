@@ -8,7 +8,7 @@
 
 | Location | PG | OB |
 |----------|----|----|
-| `common_queries.cpp`, all `transaction_*.cpp` | `$1`, `$2`, … | `?` (prepared / binary protocol) |
+| `common_queries.cpp`, all `transaction_*.cpp`, dynamic SQL with `Params` | `$1`, `$2`, … | `?` (prepared / binary protocol via `mysql_stmt_bind_param`) |
 
 ## DDL / schema (`init.cpp`, `clean.cpp`, `path_checker.cpp`, pool)
 

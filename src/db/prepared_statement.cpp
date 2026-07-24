@@ -112,6 +112,46 @@ void FillParamSlot(ParamBinding& slot, const Params::Value& value) {
     SetupParamBind(slot);
 }
 
+void BindParams(MYSQL_STMT* stmt, const Params& params,
+                std::vector<ParamBinding>& slots, std::vector<MYSQL_BIND>& binds) {
+    slots.resize(params.Size());
+    binds.resize(params.Size());
+    for (size_t i = 0; i < params.Size(); ++i) {
+        FillParamSlot(slots[i], params.Values()[i]);
+        binds[i] = slots[i].bind;
+    }
+    if (!params.Empty()) {
+        if (mysql_stmt_bind_param(stmt, binds.data()) != 0) {
+            ThrowStmtError(stmt, "mysql_stmt_bind_param failed");
+        }
+    }
+}
+
+struct StmtGuard {
+    MYSQL_STMT* stmt = nullptr;
+    ~StmtGuard() {
+        if (stmt) {
+            mysql_stmt_close(stmt);
+            stmt = nullptr;
+        }
+    }
+};
+
+MYSQL_STMT* PrepareTextStmt(MYSQL* mysql, const std::string& sql) {
+    MYSQL_STMT* stmt = mysql_stmt_init(mysql);
+    if (!stmt) {
+        throw std::runtime_error("mysql_stmt_init failed");
+    }
+    if (mysql_stmt_prepare(stmt, sql.data(), static_cast<unsigned long>(sql.size())) != 0) {
+        const int code = static_cast<int>(mysql_stmt_errno(stmt));
+        const std::string msg = mysql_stmt_error(stmt);
+        mysql_stmt_close(stmt);
+        throw DbError(code, std::string("mysql_stmt_prepare failed: [") +
+                                std::to_string(code) + "] " + msg);
+    }
+    return stmt;
+}
+
 QueryResult MaterializeStmtResult(MYSQL_STMT* stmt, MYSQL_RES* meta) {
     if (!meta) {
         return QueryResult{};
@@ -241,18 +281,7 @@ QueryResult ObStatementCache::Query(QueryId id, const Params& params) {
     Impl::StmtEntry& entry = impl_->Get(id);
     impl_->Prepare(entry, id);
 
-    entry.paramSlots.resize(params.Size());
-    entry.paramBinds.resize(params.Size());
-    for (size_t i = 0; i < params.Size(); ++i) {
-        FillParamSlot(entry.paramSlots[i], params.Values()[i]);
-        entry.paramBinds[i] = entry.paramSlots[i].bind;
-    }
-
-    if (!params.Empty()) {
-        if (mysql_stmt_bind_param(entry.stmt, entry.paramBinds.data()) != 0) {
-            ThrowStmtError(entry.stmt, "mysql_stmt_bind_param failed");
-        }
-    }
+    BindParams(entry.stmt, params, entry.paramSlots, entry.paramBinds);
 
     if (mysql_stmt_execute(entry.stmt) != 0) {
         ThrowStmtError(entry.stmt, "mysql_stmt_execute failed");
@@ -266,24 +295,42 @@ uint64_t ObStatementCache::Execute(QueryId id, const Params& params) {
     Impl::StmtEntry& entry = impl_->Get(id);
     impl_->Prepare(entry, id);
 
-    entry.paramSlots.resize(params.Size());
-    entry.paramBinds.resize(params.Size());
-    for (size_t i = 0; i < params.Size(); ++i) {
-        FillParamSlot(entry.paramSlots[i], params.Values()[i]);
-        entry.paramBinds[i] = entry.paramSlots[i].bind;
-    }
-
-    if (!params.Empty()) {
-        if (mysql_stmt_bind_param(entry.stmt, entry.paramBinds.data()) != 0) {
-            ThrowStmtError(entry.stmt, "mysql_stmt_bind_param failed");
-        }
-    }
+    BindParams(entry.stmt, params, entry.paramSlots, entry.paramBinds);
 
     if (mysql_stmt_execute(entry.stmt) != 0) {
         ThrowStmtError(entry.stmt, "mysql_stmt_execute failed");
     }
 
     return static_cast<uint64_t>(mysql_stmt_affected_rows(entry.stmt));
+}
+
+QueryResult ObStatementCache::QueryText(const std::string& sql, const Params& params) {
+    StmtGuard guard{PrepareTextStmt(impl_->mysql, sql)};
+
+    std::vector<ParamBinding> slots;
+    std::vector<MYSQL_BIND> binds;
+    BindParams(guard.stmt, params, slots, binds);
+
+    if (mysql_stmt_execute(guard.stmt) != 0) {
+        ThrowStmtError(guard.stmt, "mysql_stmt_execute failed");
+    }
+
+    MYSQL_RES* meta = mysql_stmt_result_metadata(guard.stmt);
+    return MaterializeStmtResult(guard.stmt, meta);
+}
+
+uint64_t ObStatementCache::ExecuteText(const std::string& sql, const Params& params) {
+    StmtGuard guard{PrepareTextStmt(impl_->mysql, sql)};
+
+    std::vector<ParamBinding> slots;
+    std::vector<MYSQL_BIND> binds;
+    BindParams(guard.stmt, params, slots, binds);
+
+    if (mysql_stmt_execute(guard.stmt) != 0) {
+        ThrowStmtError(guard.stmt, "mysql_stmt_execute failed");
+    }
+
+    return static_cast<uint64_t>(mysql_stmt_affected_rows(guard.stmt));
 }
 
 } // namespace NTPCC
