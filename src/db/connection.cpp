@@ -5,13 +5,11 @@
 #include <mysql.h>
 
 #include <cctype>
-#include <cstdlib>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
-#include <type_traits>
-#include <variant>
+#include <string_view>
 #include <vector>
 
 namespace NTPCC {
@@ -82,69 +80,6 @@ QueryResult MaterializeResult(MYSQL_RES* res) {
 
     mysql_free_result(res);
     return QueryResult(std::move(columns), std::move(rows));
-}
-
-std::string EscapeString(MYSQL* mysql, const std::string& value) {
-    std::string out(value.size() * 2 + 1, '\0');
-    const unsigned long n = mysql_real_escape_string(
-        mysql, out.data(), value.data(), static_cast<unsigned long>(value.size()));
-    out.resize(n);
-    return out;
-}
-
-std::string FormatParam(MYSQL* mysql, const Params::Value& value) {
-    return std::visit(
-        [&](const auto& v) -> std::string {
-            using T = std::decay_t<decltype(v)>;
-            if constexpr (std::is_same_v<T, Params::Null>) {
-                return "NULL";
-            } else if constexpr (std::is_same_v<T, std::string>) {
-                return "'" + EscapeString(mysql, v) + "'";
-            } else if constexpr (std::is_same_v<T, double>) {
-                std::ostringstream oss;
-                oss.precision(15);
-                oss << v;
-                return oss.str();
-            } else if constexpr (std::is_same_v<T, Params::Timestamp>) {
-                std::ostringstream oss;
-                oss << "'" << v.year << '-'
-                    << v.month << '-'
-                    << v.day << ' '
-                    << v.hour << ':'
-                    << v.minute << ':'
-                    << v.second << '\'';
-                return oss.str();
-            } else {
-                return std::to_string(v);
-            }
-        },
-        value);
-}
-
-// Expand `?` placeholders left-to-right with escaped literals.
-// Sufficient for TPC-C parameter shapes; avoids stmt bind complexity across Connector/C builds.
-std::string BindSql(MYSQL* mysql, const std::string& sql, const Params& params) {
-    if (params.Empty()) {
-        return sql;
-    }
-
-    std::string out;
-    out.reserve(sql.size() + 64);
-    size_t paramIndex = 0;
-    for (size_t i = 0; i < sql.size(); ++i) {
-        if (sql[i] == '?') {
-            if (paramIndex >= params.Size()) {
-                throw std::runtime_error("Not enough bound parameters for SQL");
-            }
-            out += FormatParam(mysql, params.Values()[paramIndex++]);
-        } else {
-            out.push_back(sql[i]);
-        }
-    }
-    if (paramIndex != params.Size()) {
-        throw std::runtime_error("Too many bound parameters for SQL");
-    }
-    return out;
 }
 
 void SetSessionRepeatableRead(MYSQL* mysql) {
@@ -318,8 +253,11 @@ uint64_t ObConnection::Execute(QueryId queryId, const Params& params) {
 }
 
 QueryResult ObConnection::Query(const std::string& sql, const Params& params) {
-    const std::string bound = BindSql(impl_->mysql, sql, params);
-    if (mysql_real_query(impl_->mysql, bound.data(), static_cast<unsigned long>(bound.size())) != 0) {
+    if (!params.Empty()) {
+        return impl_->stmtCache->QueryText(sql, params);
+    }
+
+    if (mysql_real_query(impl_->mysql, sql.data(), static_cast<unsigned long>(sql.size())) != 0) {
         ThrowMysqlError(impl_->mysql, "Query failed");
     }
     MYSQL_RES* res = mysql_store_result(impl_->mysql);
@@ -330,8 +268,11 @@ QueryResult ObConnection::Query(const std::string& sql, const Params& params) {
 }
 
 uint64_t ObConnection::Execute(const std::string& sql, const Params& params) {
-    const std::string bound = BindSql(impl_->mysql, sql, params);
-    if (mysql_real_query(impl_->mysql, bound.data(), static_cast<unsigned long>(bound.size())) != 0) {
+    if (!params.Empty()) {
+        return impl_->stmtCache->ExecuteText(sql, params);
+    }
+
+    if (mysql_real_query(impl_->mysql, sql.data(), static_cast<unsigned long>(sql.size())) != 0) {
         ThrowMysqlError(impl_->mysql, "Execute failed");
     }
     // Drain any result sets from multi-statement just in case.

@@ -51,7 +51,8 @@ struct ObConnection {
     QueryResult Query(QueryId queryId, const Params& params = {});
     uint64_t Execute(QueryId queryId, const Params& params = {});
 
-    // Fallback for dynamic DDL/import SQL (client-side ? substitution).
+    // Dynamic SQL: with params uses a one-shot prepared statement bind;
+    // without params uses mysql_real_query (DDL / multi-statement).
     QueryResult Query(const std::string& sql, const Params& params = {});
     uint64_t Execute(const std::string& sql, const Params& params = {});
 
